@@ -2,7 +2,7 @@ import authService from './auth.js';
 import chatService from './chat.js';
 import { userAPI } from './api.js';
 import { io } from 'socket.io-client';
-
+import { config } from './config.js';
 // DOM Elements
 const logoutBtn = document.getElementById('logout-btn');
 const usersList = document.getElementById('users-list');
@@ -653,7 +653,7 @@ async function init() {
   await loadUsers();
 }
 
-const socket = io("http://localhost:3000", {
+const socket = io(config.socketUrl, {
   auth: {
     token: localStorage.getItem("token")
   }

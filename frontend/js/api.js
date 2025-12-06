@@ -1,8 +1,8 @@
 import axios from 'axios';
-
-// Tạo axios instance với base URL
+import { config } from './config';
+// Tạo axios instance với base URL từ config
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: config.apiBaseUrl,
   headers: {
     'Content-Type': 'application/json',
   },
