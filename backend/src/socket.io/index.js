@@ -18,7 +18,7 @@ module.exports = (httpServer) => {
         if (!origin) return callback(null, true);
         
         if (allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.includes('*')) {
-          callback(null, true);
+          return callback(null, true);
         } 
         return callback(new Error("Not allowed by CORS"));
       },

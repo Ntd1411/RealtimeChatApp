@@ -25,7 +25,7 @@ app.use(cors({
 
       // nằm trong allow thì được phép
       if (allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.includes('*')) {
-        callback(null, true);
+        return callback(null, true);
       }   
       return callback(new Error("Not allowed by CORS"));
     },
