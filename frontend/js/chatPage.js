@@ -37,9 +37,13 @@ const profileUpdateMessage = document.getElementById('profile-update-message');
 const avatarUploadBtn = document.getElementById('avatar-upload-btn');
 const avatarFileInput = document.getElementById('avatar-file-input');
 const avatarUploadStatus = document.getElementById('avatar-upload-status');
+const typingIndicator = document.getElementById('typing-indicator');
 let currentProfile = null;
 // Map to store online status of users: userId -> boolean
 const onlineUsers = new Map();
+// Typing timeout reference
+let typingTimeout = null;
+const TYPING_TIMEOUT = 2000; // 2 giây
 
 if (profileEditForm) {
   setProfileFormDisabled(true);
@@ -381,6 +385,28 @@ messageInput.addEventListener('keypress', (e) => {
   }
 });
 
+// Typing indicator handler
+messageInput.addEventListener('input', () => {
+  if (!chatService.selectedUserId) return;
+  
+  // Emit typing-start event
+  socket.emit('typing-start', {
+    receiverId: chatService.selectedUserId
+  });
+  
+  // Clear previous timeout
+  if (typingTimeout) {
+    clearTimeout(typingTimeout);
+  }
+  
+  // Set timeout to emit typing-stop after 2 seconds of inactivity
+  typingTimeout = setTimeout(() => {
+    socket.emit('typing-stop', {
+      receiverId: chatService.selectedUserId
+    });
+  }, TYPING_TIMEOUT);
+});
+
 async function sendMessage() {
   const content = messageInput.value.trim();
   if (!content || !chatService.selectedUserId) return;
@@ -392,6 +418,14 @@ async function sendMessage() {
 
   // Always scroll to the latest message after sending
   scrollToLatestMessage();
+
+  // Emit typing-stop khi gửi tin nhắn
+  if (typingTimeout) {
+    clearTimeout(typingTimeout);
+  }
+  socket.emit('typing-stop', {
+    receiverId: chatService.selectedUserId
+  });
 
   // Implement send message via socket.io or API
   socket.emit("send-message", {
@@ -768,6 +802,18 @@ socket.on("noti-onlineList-toMe", array => {
     });
   }
 })
+
+// Lắng nghe typing indicator từ người khác
+socket.on("user-typing", (data) => {
+  const { userId, isTyping } = data;
+  
+  // Chỉ hiển thị nếu đang chat với người đó
+  if (chatService.selectedUserId && userId === chatService.selectedUserId.toString()) {
+    if (typingIndicator) {
+      typingIndicator.style.display = isTyping ? 'flex' : 'none';
+    }
+  }
+});
 
 
 // Initialize

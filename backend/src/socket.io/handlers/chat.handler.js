@@ -22,4 +22,27 @@ module.exports =  (io, socket) => {
     }
     
   })
+  // Xử lý khi user bắt đầu gõ
+  socket.on("typing-start", (data) => {
+    const receiverId = data.receiverId;
+    if(!receiverId) return;
+
+    // Gửi thông báo tới người nhận rằng user này đang gõ
+    io.to(receiverId.toString()).emit("user-typing", {
+      userId: socket.user._id.toString(),
+      isTyping: true
+    })
+  })
+  
+  // Xử lý khi user dừng gõ
+  socket.on("typing-stop", (data) => {
+    const receiverId = data.receiverId;
+    if(!receiverId) return;
+
+    // Gửi thông báo tới người nhận rằng user này đã dừng gõ
+    io.to(receiverId.toString()).emit("user-typing", {
+      userId: socket.user._id.toString(),
+      isTyping: false
+    })
+  })
 } 
