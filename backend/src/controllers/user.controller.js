@@ -95,20 +95,22 @@ module.exports.searchUser = async (req, res) => {
     const { username } = req.query;
   
     if(!username) {
-      res.status(400).json({ message: "Vui lòng cung cấp username để tìm kiếm!"});
+      return res.status(400).json({ message: "Vui lòng cung cấp username để tìm kiếm!"});
     }
 
+    const userId = req.user.id;
     const users = await User.find({
+      _id: { $ne: userId }, // Loại trừ user hiện tại
       username: { $regex: username, $options: 'i'}
     }).select('-password')
 
-    res.status(200).json({
+    return res.status(200).json({
       message: "Tìm kiếm thành công!",
       users
     })
 
   } catch (error) {
     console.log("Search user error:", error);
-    res.status(500).json({ message: "Lỗi server khi tìm kiếm user!"});
+    return res.status(500).json({ message: "Lỗi server khi tìm kiếm user!"});
   }
 }
