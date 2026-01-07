@@ -270,7 +270,63 @@ module.exports.getInfoGroup = async (req, res) => {
 }
 
 module.exports.addMember = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { id } = req.params;
+    const { memberIds } = req.body;
 
+    if(!Array.isArray(memberIds) || memberIds.length === 0) return res.status(400).json({ message: "Danh sách thành viên thêm vào không hợp lệ"});
+
+    if(memberIds.filter(m => !mongoose.Types.ObjectId.isValid(m)).length > 0) return res.status(400).json({ message: "Một số Id thành viên không hợp lệ"});
+
+    if(!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ message: "ID Nhóm không tồn tại"});
+
+    const group = await Group.findById(id);
+    if(!group) return res.status(404).json({ message: "Nhóm không tồn tại"});
+
+    if(!group.isActive) return res.status(400).json({ message: "Nhóm không còn hoạt động"});
+
+    const member = group.members.find(m => m.userId.toString() === userId.toString());
+    if(!member) return res.status(403).json({ message: "Bạn không phải thành viên nhóm này"});
+
+    const memberObjectIds = memberIds.map(m => new mongoose.Types.ObjectId(m));
+    const existingUsers = await User.find({
+      _id: { $in: memberObjectIds}
+    }).select('_id')
+
+    if(memberObjectIds.length !== existingUsers.length) {
+      return res.status(400).json({ message: "Một số thành viên không tồn tại"});
+    }
+
+    const newMembers = [];
+    const existingMembers = [];
+
+    memberObjectIds.forEach((memberId) => {
+      if(!group.members.find(m => m.userId.toString() === memberId.toString())) {
+        newMembers.push({
+          userId: memberId,
+          role: "member",
+          joinedAt: new Date()
+        })
+      } else {
+        existingMembers.push(memberId);
+      }
+    })
+
+    if(existingMembers.length === memberObjectIds.length)
+      return res.status(400).json({ message: "Tất cả thành viên đã có sẵn trong nhóm"});
+
+    group.members.push(...newMembers);
+
+    await group.save();
+
+    return res.status(200).json({ message: "Thêm thành viên thành công", existingMembers});
+
+
+  } catch (error) {
+    console.log("Lỗi khi thêm thành viên nhóm: ", error);
+    return res.status(500).json({ message: "Lỗi server khi thêm thành viên"});
+  }
 }
 module.exports.changeRole = async (req, res) => {
 
@@ -305,7 +361,7 @@ module.exports.deleleGroup = async (req, res) => {
       return res.status(200).json({ message: "Xóa nhóm thành công", group});
     }
     if(member.role === "member") {
-      group.members.filter(m => m.userId.toString() !== userId.toString());
+      group.members = [...group.members.filter(m => m.userId.toString() !== userId.toString())];
       if(group.members.length === 0) {
         group.isActive = false;
       }
