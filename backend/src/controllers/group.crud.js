@@ -60,12 +60,6 @@ module.exports.createGroup = async (req, res) => {
       .populate('owner', 'username fullName avatar')
       .populate('members.userId', 'username fullName avatar');
 
-    // Thông báo cho các user khác về nhóm được tạo
-    const io = req.app.get('io');
-    members.forEach(member => {
-      io.to(member).emit("group-created", group);
-    })
-
     return res.status(201).json({
       message: "Tạo nhóm thành công",
       group: populatedGroup
