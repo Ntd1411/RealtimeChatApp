@@ -18,6 +18,7 @@
 #include <time.h>
 #include <signal.h>
 #include <errno.h>
+#include <stdarg.h>
 
 #include "../include/crypto_module.h"
 #include "../include/chat_protocol.h"
