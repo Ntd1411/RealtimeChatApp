@@ -46,7 +46,7 @@ typedef struct {
     int crypto_device;
     int connected;
     pthread_t receive_thread;
-    GtklistStore *contact_store;
+    GtkListStore *contact_store;
     int running;
 } app_state_t;
 
