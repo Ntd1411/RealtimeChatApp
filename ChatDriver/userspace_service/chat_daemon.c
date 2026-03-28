@@ -477,7 +477,8 @@ static void* accept_thread_func(void *arg)
         /* Add to client list */
         pthread_mutex_lock(&client_lock);
         if (num_clients < MAX_CLIENTS) {
-            for (int i = 0; i < MAX_CLIENTS; i++) {
+            int i;
+            for (i = 0; i < MAX_CLIENTS; i++) {
                 if (clients[i] == NULL) {
                     clients[i] = client;
                     num_clients++;
