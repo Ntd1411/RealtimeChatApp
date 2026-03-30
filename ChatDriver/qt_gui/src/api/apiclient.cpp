@@ -22,16 +22,24 @@ QNetworkRequest ApiClient::createRequest(const QString &endpoint)
     QUrl url(base_url + endpoint);
     QNetworkRequest request(url);
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    request.setRawHeader("User-Agent", "ChatApp/1.0");
     
     if (!token.isEmpty()) {
         request.setRawHeader("Authorization", ("Bearer " + token).toUtf8());
+        qDebug() << "[createRequest] Added auth token";
     }
     
+    qDebug() << "[createRequest] URL:" << url.toString();
     return request;
 }
 
 void ApiClient::login(const QString &username, const QString &password)
 {
+    qDebug() << "================================";
+    qDebug() << "[LOGIN] Starting login process";
+    qDebug() << "[LOGIN] Username:" << username;
+    qDebug() << "[LOGIN] Base URL:" << base_url;
+    
     QNetworkRequest request = createRequest("/auth/login");
     
     QJsonObject json;
@@ -39,8 +47,24 @@ void ApiClient::login(const QString &username, const QString &password)
     json["password"] = password;
     
     QJsonDocument doc(json);
+    qDebug() << "[LOGIN] Request body:" << doc.toJson(QJsonDocument::Compact);
+    
     loginReply = manager->post(request, doc.toJson());
+    
+    if (!loginReply) {
+        qDebug() << "[LOGIN] ERROR: Failed to create network reply!";
+        emit loginFailed("Network error");
+        return;
+    }
+    
+    qDebug() << "[LOGIN] Sending request...";
     connect(loginReply, SIGNAL(finished()), this, SLOT(onLoginFinished()));
+    connect(loginReply, SIGNAL(error(QNetworkReply::NetworkError)), 
+            this, [this]() {
+        if (loginReply) {
+            qDebug() << "[LOGIN] Network error:" << loginReply->errorString();
+        }
+    });
 }
 
 void ApiClient::signup(const QString &username, const QString &password)
@@ -107,49 +131,95 @@ void ApiClient::updateProfile(const QJsonObject &data)
 
 void ApiClient::getMe()
 {
-    QNetworkRequest request = createRequest("/api/auth/me");
+    qDebug() << "[GET-ME] Fetching user info from /auth/me";
+    QNetworkRequest request = createRequest("/auth/me");
     getMeReply = manager->get(request);
+    
+    if (!getMeReply) {
+        qDebug() << "[GET-ME] Failed to create request";
+        return;
+    }
+    
+    qDebug() << "[GET-ME] Sending request...";
     connect(getMeReply, SIGNAL(finished()), this, SLOT(onGetMeFinished()));
 }
 
 void ApiClient::onLoginFinished()
 {
-    if (!loginReply) return;
+    qDebug() << "[LOGIN-RESPONSE] Received response";
     
-    if (loginReply->error() == QNetworkReply::NoError) {
-        QByteArray responseData = loginReply->readAll();
-        QJsonDocument doc = QJsonDocument::fromJson(responseData);
-        
-        if (doc.isObject()) {
-            QJsonObject obj = doc.object();
-            
-            // Support new format: {"message": "...", "token": "..."}
-            if (obj.contains("token")) {
-                token = obj["token"].toString();
-                qDebug() << "Login successful! Token received.";
-                emit loginSuccess(obj);
-                
-                // Fetch user info from /auth/me
-                getMe();
-            } 
-            // Support old format: {"data": {"token": "...", "user": {...}}}
-            else if (obj.contains("data")) {
-                QJsonObject data = obj["data"].toObject();
-                token = data["token"].toString();
-                QJsonObject user = data["user"].toObject();
-                current_user_id = user["_id"].toString();
-                current_username = user["username"].toString();
-                emit loginSuccess(data);
-            } 
-            else {
-                emit loginFailed(obj["message"].toString("Unknown error"));
-            }
-        }
-    } else {
-        emit loginFailed(loginReply->errorString());
+    if (!loginReply) {
+        qDebug() << "[LOGIN-RESPONSE] ERROR: loginReply is NULL!";
+        emit loginFailed("No response from server");
+        return;
     }
+    
+    int httpStatus = loginReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    qDebug() << "[LOGIN-RESPONSE] HTTP Status:" << httpStatus;
+    qDebug() << "[LOGIN-RESPONSE] Error code:" << loginReply->error();
+    
+    if (loginReply->error() != QNetworkReply::NoError) {
+        QString errorStr = loginReply->errorString();
+        qDebug() << "[LOGIN-RESPONSE] Network Error:" << errorStr;
+        emit loginFailed("Network error: " + errorStr);
+        loginReply->deleteLater();
+        loginReply = 0;
+        return;
+    }
+    
+    QByteArray responseData = loginReply->readAll();
+    qDebug() << "[LOGIN-RESPONSE] Raw response:" << responseData;
+    
+    QJsonDocument doc = QJsonDocument::fromJson(responseData);
+    
+    if (!doc.isObject()) {
+        qDebug() << "[LOGIN-RESPONSE] Response is NOT valid JSON!";
+        emit loginFailed("Invalid JSON response from server");
+        loginReply->deleteLater();
+        loginReply = 0;
+        return;
+    }
+    
+    QJsonObject obj = doc.object();
+    qDebug() << "[LOGIN-RESPONSE] JSON keys:" << obj.keys();
+    
+    // Support new format: {"message": "...", "token": "..."}
+    if (obj.contains("token")) {
+        token = obj["token"].toString();
+        qDebug() << "[LOGIN-RESPONSE] New format detected (token at root)";
+        qDebug() << "[LOGIN-RESPONSE] Token length:" << token.length();
+        qDebug() << "[LOGIN-RESPONSE] Emitting loginSuccess";
+        emit loginSuccess(obj);
+        
+        // Fetch user info from /auth/me
+        qDebug() << "[LOGIN-RESPONSE] Fetching user info from /auth/me...";
+        getMe();
+    } 
+    // Support old format: {"data": {"token": "...", "user": {...}}}
+    else if (obj.contains("data")) {
+        qDebug() << "[LOGIN-RESPONSE] Old format detected (token in data)";
+        QJsonObject data = obj["data"].toObject();
+        token = data["token"].toString();
+        QJsonObject user = data["user"].toObject();
+        current_user_id = user["_id"].toString();
+        current_username = user["username"].toString();
+        
+        qDebug() << "[LOGIN-RESPONSE] User ID:" << current_user_id;
+        qDebug() << "[LOGIN-RESPONSE] Username:" << current_username;
+        qDebug() << "[LOGIN-RESPONSE] Emitting loginSuccess";
+        
+        emit loginSuccess(data);
+    } 
+    else {
+        qDebug() << "[LOGIN-RESPONSE] No 'token' or 'data' field in response!";
+        QString errorMsg = obj["message"].toString("Unknown error");
+        qDebug() << "[LOGIN-RESPONSE] Error message:" << errorMsg;
+        emit loginFailed(errorMsg);
+    }
+    
     loginReply->deleteLater();
     loginReply = 0;
+    qDebug() << "================================\n";
 }
 
 void ApiClient::onSignupFinished()
@@ -248,37 +318,53 @@ void ApiClient::onUpdateProfileFinished()
 
 void ApiClient::onGetMeFinished()
 {
-    if (!getMeReply) return;
+    qDebug() << "[GET-ME-RESPONSE] Received response";
+    
+    if (!getMeReply) {
+        qDebug() << "[GET-ME-RESPONSE] getMeReply is NULL";
+        return;
+    }
+    
+    qDebug() << "[GET-ME-RESPONSE] Error code:" << getMeReply->error();
     
     if (getMeReply->error() == QNetworkReply::NoError) {
         QByteArray responseData = getMeReply->readAll();
+        qDebug() << "[GET-ME-RESPONSE] Raw response:" << responseData;
+        
         QJsonDocument doc = QJsonDocument::fromJson(responseData);
         
         if (doc.isObject()) {
             QJsonObject obj = doc.object();
+            qDebug() << "[GET-ME-RESPONSE] JSON keys:" << obj.keys();
+            
             QJsonObject user;
             
             // Try different response formats
             if (obj.contains("user")) {
                 user = obj["user"].toObject();
+                qDebug() << "[GET-ME-RESPONSE] Found 'user' field";
             } else if (obj.contains("data")) {
                 user = obj["data"].toObject();
+                qDebug() << "[GET-ME-RESPONSE] Found 'data' field";
             } else {
                 // Assume root is the user object
                 user = obj;
+                qDebug() << "[GET-ME-RESPONSE] Using root object as user";
             }
             
             // Extract user info
             current_user_id = user["_id"].toString();
             current_username = user["username"].toString();
             
-            qDebug() << "✅ User info loaded:";
-            qDebug() << "  ID:" << current_user_id;
-            qDebug() << "  Username:" << current_username;
+            qDebug() << "[GET-ME-RESPONSE] User ID:" << current_user_id;
+            qDebug() << "[GET-ME-RESPONSE] Username:" << current_username;
+        } else {
+            qDebug() << "[GET-ME-RESPONSE] Response is not valid JSON";
         }
     } else {
-        qDebug() << "❌ Failed to fetch user info:" << getMeReply->errorString();
+        qDebug() << "[GET-ME-RESPONSE] Error:" << getMeReply->errorString();
     }
+    
     getMeReply->deleteLater();
     getMeReply = 0;
 }
