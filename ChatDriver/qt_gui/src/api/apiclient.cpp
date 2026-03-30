@@ -162,13 +162,35 @@ void ApiClient::onLoginFinished()
     }
     
     QByteArray responseData = loginReply->readAll();
-    qDebug() << "[LOGIN-RESPONSE] Raw response:" << responseData;
+    
+    qDebug() << "[LOGIN-RESPONSE] Response size:" << responseData.size() << "bytes";
+    qDebug() << "[LOGIN-RESPONSE] Raw response:" << QString::fromUtf8(responseData);
+    
+    if (responseData.isEmpty()) {
+        qDebug() << "[LOGIN-RESPONSE] ERROR: Response is EMPTY!";
+        emit loginFailed("Server returned empty response");
+        loginReply->deleteLater();
+        loginReply = 0;
+        return;
+    }
     
     QJsonDocument doc = QJsonDocument::fromJson(responseData);
     
-    if (!doc.isObject()) {
-        qDebug() << "[LOGIN-RESPONSE] Response is NOT valid JSON!";
+    if (doc.isNull()) {
+        qDebug() << "[LOGIN-RESPONSE] ERROR: Response is NOT valid JSON!";
+        qDebug() << "[LOGIN-RESPONSE] First 200 chars:" << QString::fromUtf8(responseData.left(200));
         emit loginFailed("Invalid JSON response from server");
+        loginReply->deleteLater();
+        loginReply = 0;
+        return;
+    }
+    
+    if (!doc.isObject()) {
+        qDebug() << "[LOGIN-RESPONSE] ERROR: Response is JSON but NOT an object!";
+        if (doc.isArray()) {
+            qDebug() << "[LOGIN-RESPONSE] Response is an array, not object";
+        }
+        emit loginFailed("Invalid response format from server");
         loginReply->deleteLater();
         loginReply = 0;
         return;
