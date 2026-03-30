@@ -1,7 +1,8 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/fs.h>
-#include <linux/miscdevice.h>
+#include <linux/cdev.h>
+#include <linux/device.h>
 #include <linux/uaccess.h>
 #include <linux/crypto.h>
 #include <linux/scatterlist.h>
@@ -11,7 +12,17 @@
 #define CRYPTO_IOCTL_DES_ENC _IOWR('c', 2, struct crypto_req)
 #define CRYPTO_IOCTL_DES_DEC _IOWR('c', 3, struct crypto_req)
 
-// Cau truc goi tin giao tiep giua Node.js (App) va Kernel
+// Device configuration
+#define DEVICE_NAME "kma_crypto"
+#define CLASS_NAME  "kma_crypto_class"
+
+// Device state (global)
+static int dev_major = 0;
+static struct class *crypto_class = NULL;
+static struct device *crypto_device = NULL;
+static struct cdev crypto_cdev;
+
+// Cau truc goi tin giao tiep giua App va Kernel
 struct crypto_req {
     char data[256];
     int data_len;
@@ -98,29 +109,105 @@ static long crypto_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
     return 0;
 }
 
+// Device open handler
+static int crypto_open(struct inode *inode, struct file *file) {
+    printk(KERN_NOTICE "[KMA] Device opened\n");
+    return 0;
+}
+
+// Device release handler
+static int crypto_release(struct inode *inode, struct file *file) {
+    printk(KERN_NOTICE "[KMA] Device closed\n");
+    return 0;
+}
+
 static const struct file_operations crypto_fops = {
     .owner = THIS_MODULE,
+    .open = crypto_open,
+    .release = crypto_release,
     .unlocked_ioctl = crypto_ioctl,
-};
-// Dung miscdevice de tu dong tao file /dev/kma_crypto, do phai dung lenh mknod
-static struct miscdevice crypto_misc = {
-    .minor = MISC_DYNAMIC_MINOR,
-    .name = "kma_crypto",
-    .fops = &crypto_fops,
 };
 
 static int __init crypto_init(void) {
-    misc_register(&crypto_misc);
-    printk(KERN_INFO "KMA Crypto Driver Loaded: /dev/kma_crypto\n");
+    dev_t dev;
+    int ret;
+
+    printk(KERN_NOTICE "[KMA] Initializing crypto driver...\n");
+
+    // Cấp phát device number động
+    ret = alloc_chrdev_region(&dev, 0, 1, DEVICE_NAME);
+    if (ret < 0) {
+        printk(KERN_ERR "[KMA] Failed to allocate device number: %d\n", ret);
+        return ret;
+    }
+
+    dev_major = MAJOR(dev);
+    printk(KERN_NOTICE "[KMA] Device number allocated: MAJOR=%d, MINOR=%d\n", dev_major, MINOR(dev));
+
+    // Khởi tạo character device
+    cdev_init(&crypto_cdev, &crypto_fops);
+    crypto_cdev.owner = THIS_MODULE;
+    
+    ret = cdev_add(&crypto_cdev, dev, 1);
+    if (ret < 0) {
+        printk(KERN_ERR "[KMA] Failed to add character device: %d\n", ret);
+        unregister_chrdev_region(dev, 1);
+        return ret;
+    }
+    printk(KERN_NOTICE "[KMA] Character device registered\n");
+
+    // Tạo device class
+    crypto_class = class_create(THIS_MODULE, CLASS_NAME);
+    if (IS_ERR(crypto_class)) {
+        printk(KERN_ERR "[KMA] Failed to create device class\n");
+        cdev_del(&crypto_cdev);
+        unregister_chrdev_region(dev, 1);
+        return PTR_ERR(crypto_class);
+    }
+    printk(KERN_NOTICE "[KMA] Device class created: %s\n", CLASS_NAME);
+
+    // Tạo device node
+    crypto_device = device_create(crypto_class, NULL, dev, NULL, DEVICE_NAME);
+    if (IS_ERR(crypto_device)) {
+        printk(KERN_ERR "[KMA] Failed to create device node\n");
+        class_destroy(crypto_class);
+        cdev_del(&crypto_cdev);
+        unregister_chrdev_region(dev, 1);
+        return PTR_ERR(crypto_device);
+    }
+    printk(KERN_NOTICE "[KMA] Device node created: /dev/%s\n", DEVICE_NAME);
+    printk(KERN_NOTICE "[KMA] ===== Crypto driver initialized successfully! =====\n");
+    printk(KERN_NOTICE "[KMA] Device: /dev/%s (Major: %d)\n", DEVICE_NAME, dev_major);
+    
     return 0;
 }
 
 static void __exit crypto_exit(void) {
-    misc_deregister(&crypto_misc);
-    printk(KERN_INFO "KMA Crypto Driver Unloaded\n");
+    dev_t dev = MKDEV(dev_major, 0);
+
+    printk(KERN_NOTICE "[KMA] Cleaning up crypto driver...\n");
+    
+    // Xóa device node
+    device_destroy(crypto_class, dev);
+    printk(KERN_NOTICE "[KMA] Device node destroyed\n");
+    
+    // Xóa device class
+    class_destroy(crypto_class);
+    printk(KERN_NOTICE "[KMA] Device class destroyed\n");
+    
+    // Xóa character device
+    cdev_del(&crypto_cdev);
+    printk(KERN_NOTICE "[KMA] Character device removed\n");
+    
+    // Unregister device number
+    unregister_chrdev_region(dev, 1);
+    printk(KERN_NOTICE "[KMA] Device number unregistered: MAJOR=%d\n", dev_major);
+    printk(KERN_NOTICE "[KMA] Crypto driver unloaded\n");
 }
 
 module_init(crypto_init);
 module_exit(crypto_exit);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("KMA Chatty Team");
+MODULE_DESCRIPTION("KMA Crypto Driver - SHA1 and DES via kernel crypto API");
+MODULE_VERSION("2.0");
