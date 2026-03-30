@@ -52,9 +52,12 @@ signals:
 private slots:
     void onLoginFinished();
     void onSignupFinished();
+    void onLogoutFinished();
     void onSearchFinished();
     void onMessageUsersFinished();
     void onMessagesFinished();
+    void onUpdateProfileFinished();
+    void onGetMeFinished();
 
 private:
     QNetworkAccessManager *manager;
@@ -62,6 +65,16 @@ private:
     QString token;
     QString current_user_id;
     QString current_username;
+    
+    // Reply pointers for async handling
+    QNetworkReply *loginReply;
+    QNetworkReply *signupReply;
+    QNetworkReply *logoutReply;
+    QNetworkReply *searchReply;
+    QNetworkReply *messageUsersReply;
+    QNetworkReply *messagesReply;
+    QNetworkReply *updateProfileReply;
+    QNetworkReply *getMeReply;
     
     QNetworkRequest createRequest(const QString &endpoint);
     void handleJsonResponse(QNetworkReply *reply);
