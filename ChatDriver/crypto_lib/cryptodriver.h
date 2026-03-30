@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include "../include/crypto_module.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -40,12 +41,6 @@ int crypto_driver_des_decrypt(CryptoDriver *driver,
                              unsigned char *plaintext,
                              size_t *plaintext_len);
 
-/* Error codes */
-#define CRYPTO_OK           0
-#define CRYPTO_ERR_NO_DEVICE (-1)
-#define CRYPTO_ERR_IOCTL    (-2)
-#define CRYPTO_ERR_INPUT    (-3)
-#define CRYPTO_ERR_OUTPUT   (-4)
 
 #ifdef __cplusplus
 }
