@@ -1,118 +1,3 @@
-# 🚀 ChatDriver + Qt GUI - Complete Guide
-
-**A real-time chat desktop application for CentOS 6 with kernel-level encryption (DES + SHA1), built with Qt5 frontend and Node.js backend.**
-
----
-
-## ✨ Features
-
-### Core Features
-- ✅ **User Authentication**: Secure login and registration via backend API
-- ✅ **Real-time Messaging**: Socket.IO based instant messaging between users
-- ✅ **User Search**: Find and start conversations with other users
-- ✅ **Message History**: View previous conversations and chat history
-- ✅ **Typing Indicators**: See when others are typing (with metadata)
-- ✅ **Online Status**: Know who's online/offline
-- ✅ **Async Operations**: Non-blocking API and socket operations
-
-### Security Features
-- 🔐 **DES Encryption**: Messages encrypted via kernel loadable module
-- 🔐 **SHA1 Hashing**: Secure password hashing via kernel crypto device
-- 🔐 **JWT Tokens**: Secure session management with backend
-- 🔐 **Kernel Crypto**: Direct hardware crypto acceleration via `/dev/chat_crypto`
-- 🔐 **Device Protection**: Kernel ioctl interface for cryptographic operations
-
----
-
-## 📋 Architecture Overview
-
-### 3-Layer Model
-
-```
-┌─────────────────────────────────────────────────────┐
-│          Qt5 Desktop Application                     │
-│  ├─ UI Layer: Login Dialog, Chat Window             │
-│  ├─ API Layer: REST HTTP Client                     │
-│  ├─ Network Layer: WebSocket/Socket.IO Client       │
-│  └─ Crypto Client: Direct kernel ioctl calls        │
-└─────────────────────────────────────────────────────┘
-         ↓ HTTP ↓ WebSocket ↓ ioctl ↓
-    ┌─────────────────────────────────┐
-    │  Node.js Backend + MongoDB       │
-    │  • User Management               │
-    │  • Message Storage & Relay       │
-    │  • Authentication (JWT)          │
-    │  • Socket.IO Server              │
-    └─────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────┐
-│      Kernel Crypto Module                            │
-│  ├─ DES Encryption/Decryption (custom impl)         │
-│  ├─ SHA1 Hashing (custom impl)                      │
-│  ├─ Crypto Device Driver (/dev/chat_crypto)         │
-│  └─ Linux Loadable Module (LKM)                     │
-└─────────────────────────────────────────────────────┘
-```
-
-### Components
-
-| Component | Type | Language | Purpose | Location |
-|-----------|------|----------|---------|----------|
-| **kernel_module** | LKM | C | Crypto acceleration (DES + SHA1) | `kernel_module/` |
-| **Qt App** | Desktop UI | C++11 + Qt5 | Chat interface with crypto client | `qt_gui/` |
-| **Backend** | REST + Socket.IO | Node.js | User management, message relay | `../backend/` |
-
----
-
-## 📦 Project Structure
-
-```
-ChatDriver/
-├── README.md                          # This file - Complete guide
-├── BUILD.md                           # Build details
-├── IMPLEMENTATION.md                  # Implementation notes
-├──
-├── kernel_module/                     # Kernel Loadable Module
-│   ├── Makefile                       # Build kernel module
-│   ├── chat_crypto.c                  # Main kernel module (~180 lines)
-│   ├── sha1.h / sha1.c                # SHA1 algorithm (RFC 3174, ~400 lines)
-│   └── des.h / des.c                  # DES algorithm (FIPS 46-3, ~900 lines)
-├──
-├── gtk_gui/                           # GTK Desktop Client (reference)
-│   └── chat_client.c                  # GTK implementation
-├──
-├── qt_gui/                            # Modern Qt Desktop Client
-│   ├── CMakeLists.txt                 # CMake build configuration
-│   ├── src/
-│   │   ├── main.cpp                   # Application entry point
-│   │   ├── config.h                   # Centralized backend configuration
-│   │   ├── ui/                        # UI Components
-│   │   │   ├── logindialog.h/cpp      # Login window
-│   │   │   └── chatwindow.h/cpp       # Main chat interface
-│   │   ├── api/                       # REST API Client
-│   │   │   └── apiclient.h/cpp        # HTTP REST client
-│   │   ├── network/                   # Real-time Communication
-│   │   │   └── socketclient.h/cpp     # WebSocket/Socket.IO client
-│   │   └── crypto/                    # Kernel Crypto Client
-│   │       └── kernel_crypto_client.h/cpp  # Direct ioctl to kernel
-│   └── build/                         # Build output directory
-├──
-└── include/                           # Shared headers
-    ├── chat_protocol.h                # Protocol specification
-    ├── crypto_module.h                # Kernel module ioctl interface
-    └── ...
-```
-
----
-
-## 🔨 Prerequisites
-
-### System Requirements
-
-- **OS**: CentOS 6.x (or compatible, with kernel 2.6.32+)
-- **Arch**: 32-bit or 64-bit
-- **Kernel Modules**: Loadable module support enabled
-
 ### Software Requirements
 
 Before starting, install:
@@ -155,21 +40,21 @@ g++ --version
 
 ### Step 1: Build and Install Kernel Module
 
-The kernel module contains custom implementations of DES and SHA1 encryption algorithms.
-
 ```bash
 cd ChatDriver/kernel_module
-make                    # Compile kernel module
-sudo make install       # Build and install into kernel
+make
+sudo make install
+./chat_crypto_test sha1 "hello"
 ```
 
 **What gets built:**
 - `chat_crypto.ko` - Main kernel module with ioctl device driver
-- `sha1.o` - SHA1 algorithm (RFC 3174 compliant, ~400 lines)
-- `des.o` - DES algorithm (FIPS 46-3 compliant, ~900 lines)
+- `chat_crypto_test` - Test
 
 **Verify Installation:**
 ```bash
+sudo dmesg | tail
+cat /proc/devices
 lsmod | grep chat_crypto
 # Expected output: chat_crypto    XXXX  0
 
