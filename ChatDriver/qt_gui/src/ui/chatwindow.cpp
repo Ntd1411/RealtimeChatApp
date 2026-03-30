@@ -37,10 +37,7 @@ ChatWindow::ChatWindow(const QString &t, const QString &uid, const QString &u)
     
     // Typing timer
     typingTimer = new QTimer(this);
-    connect(typingTimer, &QTimer::timeout, this,  [this]() {
-        socketClient->notifyTypingStop(current_chat_user_id);
-        isTyping = false;
-    });
+    connect(typingTimer, &QTimer::timeout, this, &ChatWindow::onTypingTimerTimeout);
     
     setupUI();
     setupConnections();
@@ -182,7 +179,9 @@ void ChatWindow::setupUI()
     mainSplitter->addWidget(rightPanel);
     mainSplitter->setStretchFactor(0, 1);
     mainSplitter->setStretchFactor(1, 2);
-    mainSplitter->setSizes({250, 500});
+    QList<int> sizes;
+    sizes << 250 << 500;
+    mainSplitter->setSizes(sizes);
     
     mainLayout->addWidget(mainSplitter);
 }
@@ -198,13 +197,7 @@ void ChatWindow::setupConnections()
     connect(messageInput, &QLineEdit::returnPressed, this, &ChatWindow::onSendMessageClicked);
     
     // Message input typing
-    connect(messageInput, &QLineEdit::textChanged, this, [this](const QString &text) {
-        if (!text.isEmpty() && !isTyping && !current_chat_user_id.isEmpty()) {
-            socketClient->notifyTypingStart(current_chat_user_id);
-            isTyping = true;
-            typingTimer->start(3000); // Stop typing after 3 seconds of inactivity
-        }
-    });
+    connect(messageInput, &QLineEdit::textChanged, this, &ChatWindow::onMessageInputTextChanged);
     
     // API Signals
     connect(apiClient, &ApiClient::searchResults, this, &ChatWindow::onSearchResults);
@@ -282,8 +275,8 @@ void ChatWindow::onSearchResults(const QJsonArray &users)
 {
     chatListWidget->clear();
     
-    for (const QJsonValue &val : users) {
-        QJsonObject user = val.toObject();
+    for (int i = 0; i < users.size(); i++) {
+        QJsonObject user = users[i].toObject();
         QString userId = user["_id"].toString();
         QString userName = user["username"].toString();
         
@@ -305,8 +298,8 @@ void ChatWindow::onMessageUsersReceived(const QJsonArray &users)
 {
     chatListWidget->clear();
     
-    for (const QJsonValue &val : users) {
-        QJsonObject user = val.toObject();
+    for (int i = 0; i < users.size(); i++) {
+        QJsonObject user = users[i].toObject();
         QString userId = user["_id"].toString();
         QString userName = user["username"].toString();
         
@@ -322,8 +315,8 @@ void ChatWindow::onMessagesReceived(const QJsonArray &messages)
 {
     messageView->clear();
     
-    for (const QJsonValue &val : messages) {
-        QJsonObject msg = val.toObject();
+    for (int i = 0; i < messages.size(); i++) {
+        QJsonObject msg = messages[i].toObject();
         QString senderId = msg["senderId"].toString();
         QString content = msg["content"].toString();
         QString createdAt = msg["createdAt"].toString();
@@ -397,6 +390,21 @@ void ChatWindow::displayMessage(const QString &sender, const QString &content, b
     }
     messageView->append(formatted);
     messageView->setTextBackgroundColor(Qt::white);
+}
+
+void ChatWindow::onTypingTimerTimeout()
+{
+    socketClient->notifyTypingStop(current_chat_user_id);
+    isTyping = false;
+}
+
+void ChatWindow::onMessageInputTextChanged(const QString &text)
+{
+    if (!text.isEmpty() && !isTyping && !current_chat_user_id.isEmpty()) {
+        socketClient->notifyTypingStart(current_chat_user_id);
+        isTyping = true;
+        typingTimer->start(3000); // Stop typing after 3 seconds of inactivity
+    }
 }
 
 void ChatWindow::closeEvent(QCloseEvent *event)
