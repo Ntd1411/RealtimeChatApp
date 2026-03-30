@@ -59,12 +59,6 @@ void ApiClient::login(const QString &username, const QString &password)
     
     qDebug() << "[LOGIN] Sending request...";
     connect(loginReply, SIGNAL(finished()), this, SLOT(onLoginFinished()));
-    connect(loginReply, SIGNAL(error(QNetworkReply::NetworkError)), 
-            this, [this]() {
-        if (loginReply) {
-            qDebug() << "[LOGIN] Network error:" << loginReply->errorString();
-        }
-    });
 }
 
 void ApiClient::signup(const QString &username, const QString &password)
