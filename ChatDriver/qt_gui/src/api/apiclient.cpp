@@ -100,7 +100,8 @@ void ApiClient::updateProfile(const QJsonObject &data)
 {
     QNetworkRequest request = createRequest("/api/user/update");
     QJsonDocument doc(data);
-    updateProfileReply = manager->sendCustomRequest(request, "PATCH", doc.toJson());
+    QByteArray jsonData = doc.toJson();
+    updateProfileReply = manager->post(request, jsonData);
     connect(updateProfileReply, SIGNAL(finished()), this, SLOT(onUpdateProfileFinished()));
 }
 
@@ -124,8 +125,9 @@ void ApiClient::onLoginFinished()
             if (obj.contains("data")) {
                 QJsonObject data = obj["data"].toObject();
                 token = data["token"].toString();
-                current_user_id = data["user"]["_id"].toString();
-                current_username = data["user"]["username"].toString();
+                QJsonObject user = data["user"].toObject();
+                current_user_id = user["_id"].toString();
+                current_username = user["username"].toString();
                 emit loginSuccess(data);
             } else {
                 emit loginFailed(obj["message"].toString("Unknown error"));
