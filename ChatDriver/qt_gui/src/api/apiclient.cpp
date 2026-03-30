@@ -32,7 +32,7 @@ QNetworkRequest ApiClient::createRequest(const QString &endpoint)
 
 void ApiClient::login(const QString &username, const QString &password)
 {
-    QNetworkRequest request = createRequest("/api/auth/login");
+    QNetworkRequest request = createRequest("/auth/login");
     
     QJsonObject json;
     json["username"] = username;
@@ -45,7 +45,7 @@ void ApiClient::login(const QString &username, const QString &password)
 
 void ApiClient::signup(const QString &username, const QString &password)
 {
-    QNetworkRequest request = createRequest("/api/auth/signup");
+    QNetworkRequest request = createRequest("/auth/signup");
     
     QJsonObject json;
     json["username"] = username;
@@ -60,7 +60,7 @@ void ApiClient::logout()
 {
     if (token.isEmpty()) return;
     
-    QNetworkRequest request = createRequest("/api/auth/logout");
+    QNetworkRequest request = createRequest("/auth/logout");
     logoutReply = manager->post(request, QByteArray());
     connect(logoutReply, SIGNAL(finished()), this, SLOT(onLogoutFinished()));
 }
