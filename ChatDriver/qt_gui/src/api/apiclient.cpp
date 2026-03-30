@@ -122,14 +122,26 @@ void ApiClient::onLoginFinished()
         
         if (doc.isObject()) {
             QJsonObject obj = doc.object();
-            if (obj.contains("data")) {
+            
+            // Support new format: {"message": "...", "token": "..."}
+            if (obj.contains("token")) {
+                token = obj["token"].toString();
+                qDebug() << "Login successful! Token received.";
+                emit loginSuccess(obj);
+                
+                // Fetch user info from /auth/me
+                getMe();
+            } 
+            // Support old format: {"data": {"token": "...", "user": {...}}}
+            else if (obj.contains("data")) {
                 QJsonObject data = obj["data"].toObject();
                 token = data["token"].toString();
                 QJsonObject user = data["user"].toObject();
                 current_user_id = user["_id"].toString();
                 current_username = user["username"].toString();
                 emit loginSuccess(data);
-            } else {
+            } 
+            else {
                 emit loginFailed(obj["message"].toString("Unknown error"));
             }
         }
@@ -244,8 +256,28 @@ void ApiClient::onGetMeFinished()
         
         if (doc.isObject()) {
             QJsonObject obj = doc.object();
-            qDebug() << "User info:" << obj;
+            QJsonObject user;
+            
+            // Try different response formats
+            if (obj.contains("user")) {
+                user = obj["user"].toObject();
+            } else if (obj.contains("data")) {
+                user = obj["data"].toObject();
+            } else {
+                // Assume root is the user object
+                user = obj;
+            }
+            
+            // Extract user info
+            current_user_id = user["_id"].toString();
+            current_username = user["username"].toString();
+            
+            qDebug() << "✅ User info loaded:";
+            qDebug() << "  ID:" << current_user_id;
+            qDebug() << "  Username:" << current_username;
         }
+    } else {
+        qDebug() << "❌ Failed to fetch user info:" << getMeReply->errorString();
     }
     getMeReply->deleteLater();
     getMeReply = 0;
