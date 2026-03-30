@@ -41,32 +41,43 @@ static int do_sha1(struct sha1_request *req) {
     return 0;
 }
 
-// Ham ma hoa / giai ma DES
+// Ham ma hoa / giai ma DES (0=encrypt, 1=decrypt)
 static int do_des(struct des_request *req) {
     struct crypto_blkcipher *tfm;
     struct blkcipher_desc desc;
     struct scatterlist sg_in, sg_out;
+    unsigned char *input_buf = NULL;
     int ret, crypt_len = req->input_len;
 
-    // Thuat toan DES khoi (ECB) yeu cau du lieu phai là boi so cua 8 byte.
+    // DES ECB mode requires input length to be multiple of 8 bytes
     if (crypt_len % 8 != 0) {
         crypt_len = ((crypt_len / 8) + 1) * 8;
-        memset(req->input + req->input_len, 0, crypt_len - req->input_len);
     }
 
+    // Allocate temp buffer for input (with padding space)
+    input_buf = kzalloc(crypt_len, GFP_KERNEL);
+    if (!input_buf) return -ENOMEM;
+
+    // Copy user input to temp buffer (rest is zero-padded by kzalloc)
+    memcpy(input_buf, req->input, req->input_len);
+
     tfm = crypto_alloc_blkcipher("ecb(des)", 0, CRYPTO_ALG_ASYNC);
-    if (IS_ERR(tfm)) return PTR_ERR(tfm);
+    if (IS_ERR(tfm)) {
+        kfree(input_buf);
+        return PTR_ERR(tfm);
+    }
 
     ret = crypto_blkcipher_setkey(tfm, req->key, DES_KEY_SIZE);
     if (ret) {
         crypto_free_blkcipher(tfm);
+        kfree(input_buf);
         return ret;
     }
 
     desc.tfm = tfm;
     desc.flags = 0;
 
-    sg_init_one(&sg_in, req->input, crypt_len);
+    sg_init_one(&sg_in, input_buf, crypt_len);
     sg_init_one(&sg_out, req->output, crypt_len);
 
     if (req->mode == 0) ret = crypto_blkcipher_encrypt(&desc, &sg_out, &sg_in, crypt_len);
@@ -74,6 +85,7 @@ static int do_des(struct des_request *req) {
 
     req->output_len = crypt_len;
     crypto_free_blkcipher(tfm);
+    kfree(input_buf);
     return ret;
 }
 
@@ -83,22 +95,42 @@ static long crypto_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
     switch (cmd) {
         case CRYPTO_IOCTL_SHA1_HASH: {
-            struct sha1_request req;
-            if (copy_from_user(&req, (void *)arg, sizeof(req)))
+            struct sha1_request *req = kzalloc(sizeof(*req), GFP_KERNEL);
+            if (!req) return -ENOMEM;
+
+            if (copy_from_user(req, (void *)arg, sizeof(*req))) {
+                kfree(req);
                 return -EFAULT;
-            ret = do_sha1(&req);
-            if (copy_to_user((void *)arg, &req, sizeof(req)))
+            }
+
+            ret = do_sha1(req);
+
+            if (copy_to_user((void *)arg, req, sizeof(*req))) {
+                kfree(req);
                 return -EFAULT;
+            }
+
+            kfree(req);
             break;
         }
         case CRYPTO_IOCTL_DES_ENCRYPT:
         case CRYPTO_IOCTL_DES_DECRYPT: {
-            struct des_request req;
-            if (copy_from_user(&req, (void *)arg, sizeof(req)))
+            struct des_request *req = kzalloc(sizeof(*req), GFP_KERNEL);
+            if (!req) return -ENOMEM;
+
+            if (copy_from_user(req, (void *)arg, sizeof(*req))) {
+                kfree(req);
                 return -EFAULT;
-            ret = do_des(&req);
-            if (copy_to_user((void *)arg, &req, sizeof(req)))
+            }
+
+            ret = do_des(req);
+
+            if (copy_to_user((void *)arg, req, sizeof(*req))) {
+                kfree(req);
                 return -EFAULT;
+            }
+
+            kfree(req);
             break;
         }
         default:
