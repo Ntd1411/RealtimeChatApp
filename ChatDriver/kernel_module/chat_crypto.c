@@ -26,10 +26,18 @@ MODULE_VERSION("1.0");
 #define CLASS_NAME "chat_crypto_class"
 
 /* Module state */
-static int major_number;
+static int major_number = 0;
 static struct class* crypto_class = NULL;
 static struct device* crypto_device = NULL;
 static struct cdev crypto_cdev;
+
+/**
+ * Device open handler
+ */
+static int chat_crypto_open(struct inode *inodep, struct file *filep)
+{
+    return 0;
+}
 
 /**
  * Device IOCTL Handler
@@ -139,6 +147,7 @@ static long chat_crypto_ioctl(struct file *filp,
  */
 static const struct file_operations fops = {
     .owner = THIS_MODULE,
+    .open = chat_crypto_open,
     .unlocked_ioctl = chat_crypto_ioctl,
 };
 
@@ -150,50 +159,52 @@ static int __init chat_crypto_init(void)
     dev_t dev_num;
     int ret;
 
-    printk(KERN_INFO "ChatDriver: Loading kernel crypto module\n");
+    printk(KERN_INFO "[ChatDriver] Loading kernel crypto module\n");
 
     /* Allocate character device number */
     ret = alloc_chrdev_region(&dev_num, 0, 1, DEVICE_NAME);
     if (ret < 0) {
-        printk(KERN_ERR "ChatDriver: Failed to allocate device number\n");
+        printk(KERN_ERR "[ChatDriver] Failed to allocate device number: %d\n", ret);
         return ret;
     }
 
     major_number = MAJOR(dev_num);
-    printk(KERN_INFO "ChatDriver: Allocated major number %d\n", major_number);
+    printk(KERN_INFO "[ChatDriver] Allocated major number: %d\n", major_number);
 
-    /* Create device class */
-    crypto_class = class_create(THIS_MODULE, CLASS_NAME);
-    if (IS_ERR(crypto_class)) {
-        unregister_chrdev_region(dev_num, 1);
-        printk(KERN_ERR "ChatDriver: Failed to create device class\n");
-        return PTR_ERR(crypto_class);
-    }
-
-    /* Create device node */
-    crypto_device = device_create(crypto_class, NULL, dev_num, NULL, DEVICE_NAME);
-    if (IS_ERR(crypto_device)) {
-        class_destroy(crypto_class);
-        unregister_chrdev_region(dev_num, 1);
-        printk(KERN_ERR "ChatDriver: Failed to create device\n");
-        return PTR_ERR(crypto_device);
-    }
-
-    /* Initialize and add character device */
+    /* Initialize and add character device (do this BEFORE device_create) */
     cdev_init(&crypto_cdev, &fops);
     crypto_cdev.owner = THIS_MODULE;
     ret = cdev_add(&crypto_cdev, dev_num, 1);
     if (ret < 0) {
-        device_destroy(crypto_class, dev_num);
-        class_destroy(crypto_class);
+        printk(KERN_ERR "[ChatDriver] Failed to add character device: %d\n", ret);
         unregister_chrdev_region(dev_num, 1);
-        printk(KERN_ERR "ChatDriver: Failed to add character device\n");
         return ret;
     }
+    printk(KERN_INFO "[ChatDriver] Character device added\n");
 
-    printk(KERN_INFO "ChatDriver: Kernel module loaded successfully\n");
-    printk(KERN_INFO "ChatDriver: Device /dev/%s is ready\n", DEVICE_NAME);
-    printk(KERN_INFO "ChatDriver: SHA1 and custom DES enabled\n");
+    /* Create device class */
+    crypto_class = class_create(THIS_MODULE, CLASS_NAME);
+    if (IS_ERR(crypto_class)) {
+        printk(KERN_ERR "[ChatDriver] Failed to create device class\n");
+        cdev_del(&crypto_cdev);
+        unregister_chrdev_region(dev_num, 1);
+        return PTR_ERR(crypto_class);
+    }
+    printk(KERN_INFO "[ChatDriver] Device class created\n");
+
+    /* Create device node in /dev */
+    crypto_device = device_create(crypto_class, NULL, dev_num, NULL, DEVICE_NAME);
+    if (IS_ERR(crypto_device)) {
+        printk(KERN_ERR "[ChatDriver] Failed to create device: %ld\n", PTR_ERR(crypto_device));
+        class_destroy(crypto_class);
+        cdev_del(&crypto_cdev);
+        unregister_chrdev_region(dev_num, 1);
+        return PTR_ERR(crypto_device);
+    }
+    printk(KERN_INFO "[ChatDriver] Device node created: /dev/%s\n", DEVICE_NAME);
+
+    printk(KERN_INFO "[ChatDriver] Module loaded successfully\n");
+    printk(KERN_INFO "[ChatDriver] SHA1 and DES enabled\n");
 
     return 0;
 }
@@ -205,19 +216,26 @@ static void __exit chat_crypto_exit(void)
 {
     dev_t dev_num = MKDEV(major_number, 0);
 
-    printk(KERN_INFO "ChatDriver: Unloading kernel crypto module\n");
+    printk(KERN_INFO "[ChatDriver] Unloading kernel crypto module\n");
 
     /* Remove character device */
     cdev_del(&crypto_cdev);
+    printk(KERN_INFO "[ChatDriver] Character device removed\n");
 
     /* Destroy device node */
     device_destroy(crypto_class, dev_num);
+    printk(KERN_INFO "[ChatDriver] Device node destroyed\n");
 
     /* Destroy device class */
     class_destroy(crypto_class);
+    printk(KERN_INFO "[ChatDriver] Device class destroyed\n");
 
     /* Unregister character device region */
     unregister_chrdev_region(dev_num, 1);
+    printk(KERN_INFO "[ChatDriver] Device region unregistered\n");
+
+    printk(KERN_INFO "[ChatDriver] Module unloaded\n");
+}
 
     printk(KERN_INFO "ChatDriver: Module unloaded successfully\n");
 }
