@@ -1,241 +1,126 @@
-/*
- * ChatDriver Kernel Crypto Module
- * Uses custom SHA1 and DES implementations (no kernel crypto API)
- * For CentOS 6 (Linux kernel 2.6.32+)
- */
-
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/fs.h>
-#include <linux/cdev.h>
-#include <linux/device.h>
-#include <linux/ioctl.h>
+#include <linux/miscdevice.h>
 #include <linux/uaccess.h>
-#include <linux/slab.h>
+#include <linux/crypto.h>
+#include <linux/scatterlist.h>
+#include <linux/string.h>
 
-#include "../include/crypto_module.h"
-#include "sha1.h"
-#include "des.h"
+#define CRYPTO_IOCTL_SHA1    _IOWR('c', 1, struct crypto_req)
+#define CRYPTO_IOCTL_DES_ENC _IOWR('c', 2, struct crypto_req)
+#define CRYPTO_IOCTL_DES_DEC _IOWR('c', 3, struct crypto_req)
 
-MODULE_LICENSE("GPL");
-MODULE_AUTHOR("ChatDriver");
-MODULE_DESCRIPTION("Kernel crypto module with custom SHA1 and DES");
-MODULE_VERSION("1.0");
-
-#define DEVICE_NAME "chat_crypto"
-#define CLASS_NAME "chat_crypto_class"
-
-/* Module state */
-static int major_number = 0;
-static struct class* crypto_class = NULL;
-static struct device* crypto_device = NULL;
-static struct cdev crypto_cdev;
-
-/**
- * Device open handler
- */
-static int chat_crypto_open(struct inode *inodep, struct file *filep)
-{
-    return 0;
-}
-
-/**
- * Device IOCTL Handler
- */
-static long chat_crypto_ioctl(struct file *filp,
-                               unsigned int cmd,
-                               unsigned long arg)
-{
-    struct sha1_request sha1_req;
-    struct des_request des_req;
-    void __user *argp = (void __user *)arg;
-    unsigned char *kernel_input = NULL;
-    unsigned char *kernel_output = NULL;
-    int ret;
-
-    switch (cmd) {
-        case CRYPTO_IOCTL_SHA1_HASH:
-            /* Copy SHA1 request from user space */
-            if (copy_from_user(&sha1_req, argp, sizeof(sha1_req))) {
-                return -EFAULT;
-            }
-
-            /* Validate input length */
-            if (sha1_req.input_len > SHA1_MAX_INPUT) {
-                return -EINVAL;
-            }
-
-            /* Perform SHA1 hash */
-            sha1_hash(sha1_req.input, sha1_req.input_len, sha1_req.digest);
-
-            /* Copy result back to user space */
-            if (copy_to_user(argp, &sha1_req, sizeof(sha1_req))) {
-                return -EFAULT;
-            }
-
-            return CRYPTO_OK;
-
-        case CRYPTO_IOCTL_DES_ENCRYPT:
-            /* Copy DES request from user space */
-            if (copy_from_user(&des_req, argp, sizeof(des_req))) {
-                return -EFAULT;
-            }
-
-            /* Validate input */
-            if (des_req.input_len > DES_MAX_INPUT) {
-                return -EINVAL;
-            }
-
-            if (des_req.input_len % DES_BLOCK_SIZE != 0) {
-                return -EINVAL;
-            }
-
-            /* Perform DES encryption */
-            {
-                struct des_context ctx;
-                des_init(&ctx, des_req.key);
-                des_encrypt_ecb(&ctx, des_req.input, des_req.output, des_req.input_len);
-            }
-
-            des_req.output_len = des_req.input_len;
-
-            /* Copy result back to user space */
-            if (copy_to_user(argp, &des_req, sizeof(des_req))) {
-                return -EFAULT;
-            }
-
-            return CRYPTO_OK;
-
-        case CRYPTO_IOCTL_DES_DECRYPT:
-            /* Copy DES request from user space */
-            if (copy_from_user(&des_req, argp, sizeof(des_req))) {
-                return -EFAULT;
-            }
-
-            /* Validate input */
-            if (des_req.input_len > DES_MAX_INPUT) {
-                return -EINVAL;
-            }
-
-            if (des_req.input_len % DES_BLOCK_SIZE != 0) {
-                return -EINVAL;
-            }
-
-            /* Perform DES decryption */
-            {
-                struct des_context ctx;
-                des_init(&ctx, des_req.key);
-                des_decrypt_ecb(&ctx, des_req.input, des_req.output, des_req.input_len);
-            }
-
-            des_req.output_len = des_req.input_len;
-
-            /* Copy result back to user space */
-            if (copy_to_user(argp, &des_req, sizeof(des_req))) {
-                return -EFAULT;
-            }
-
-            return CRYPTO_OK;
-
-        default:
-            return -EINVAL;
-    }
-}
-
-/**
- * Device file operations structure
- */
-static const struct file_operations fops = {
-    .owner = THIS_MODULE,
-    .open = chat_crypto_open,
-    .unlocked_ioctl = chat_crypto_ioctl,
+// Cau truc goi tin giao tiep giua Node.js (App) va Kernel
+struct crypto_req {
+    char data[256];
+    int data_len;
+    char key[8];    // Key 8 byte cho DES
+    char result[256];
+    int result_len;
 };
 
-/**
- * Module initialization
- */
-static int __init chat_crypto_init(void)
-{
-    dev_t dev_num;
-    int ret;
+// Ham bam SHA1
+static int do_sha1(struct crypto_req *req) {
+    struct crypto_hash *tfm;
+    struct hash_desc desc;
+    struct scatterlist sg;
 
-    printk(KERN_NOTICE "[ChatDriver] Loading kernel crypto module\n");
+    tfm = crypto_alloc_hash("sha1", 0, CRYPTO_ALG_ASYNC);
+    if (IS_ERR(tfm)) return PTR_ERR(tfm);
 
-    /* Allocate character device number */
-    ret = alloc_chrdev_region(&dev_num, 0, 1, DEVICE_NAME);
-    if (ret < 0) {
-        printk(KERN_NOTICE "[ChatDriver] Failed to allocate device number: %d\n", ret);
+    desc.tfm = tfm;
+    desc.flags = 0;
+
+    sg_init_one(&sg, req->data, req->data_len);
+    crypto_hash_init(&desc);
+    crypto_hash_update(&desc, &sg, req->data_len);
+    crypto_hash_final(&desc, req->result);
+
+    req->result_len = crypto_hash_digestsize(tfm);
+    crypto_free_hash(tfm);
+    return 0;
+}
+
+// Ham ma hoa / giai ma DES
+static int do_des(struct crypto_req *req, int encrypt) {
+    struct crypto_blkcipher *tfm;
+    struct blkcipher_desc desc;
+    struct scatterlist sg_in, sg_out;
+    int ret, crypt_len = req->data_len;
+
+    // Thuat toan DES khoi (ECB) yeu cau du lieu phai là boi so cua 8 byte.
+    if (crypt_len % 8 != 0) {
+        crypt_len = ((crypt_len / 8) + 1) * 8;
+        memset(req->data + req->data_len, 0, crypt_len - req->data_len); // Dem so 0 vao cuoi
+    }
+
+    tfm = crypto_alloc_blkcipher("ecb(des)", 0, CRYPTO_ALG_ASYNC);
+    if (IS_ERR(tfm)) return PTR_ERR(tfm);
+
+    ret = crypto_blkcipher_setkey(tfm, req->key, 8);
+    if (ret) {
+        crypto_free_blkcipher(tfm);
         return ret;
     }
 
-    major_number = MAJOR(dev_num);
-    printk(KERN_NOTICE "[ChatDriver] Allocated major number: %d\n", major_number);
+    desc.tfm = tfm;
+    desc.flags = 0;
 
-    /* Initialize and add character device (do this BEFORE device_create) */
-    cdev_init(&crypto_cdev, &fops);
-    crypto_cdev.owner = THIS_MODULE;
-    ret = cdev_add(&crypto_cdev, dev_num, 1);
-    if (ret < 0) {
-        printk(KERN_NOTICE "[ChatDriver] Failed to add character device: %d\n", ret);
-        unregister_chrdev_region(dev_num, 1);
-        return ret;
+    sg_init_one(&sg_in, req->data, crypt_len);
+    sg_init_one(&sg_out, req->result, crypt_len);
+
+    if (encrypt) ret = crypto_blkcipher_encrypt(&desc, &sg_out, &sg_in, crypt_len);
+    else         ret = crypto_blkcipher_decrypt(&desc, &sg_out, &sg_in, crypt_len);
+
+    req->result_len = crypt_len;
+    crypto_free_blkcipher(tfm);
+    return ret;
+}
+
+// Ham lang nghe su kien tu User-space
+static long crypto_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
+    struct crypto_req req;
+
+    if (copy_from_user(&req, (struct crypto_req *)arg, sizeof(req)))
+        return -EFAULT;
+
+    switch (cmd) {
+        case CRYPTO_IOCTL_SHA1:     do_sha1(&req); break;
+        case CRYPTO_IOCTL_DES_ENC:  do_des(&req, 1); break;
+        case CRYPTO_IOCTL_DES_DEC:  do_des(&req, 0); break;
+        default: return -EINVAL;
     }
-    printk(KERN_NOTICE "[ChatDriver] Character device added\n");
 
-    /* Create device class */
-    crypto_class = class_create(THIS_MODULE, CLASS_NAME);
-    if (IS_ERR(crypto_class)) {
-        printk(KERN_NOTICE "[ChatDriver] Failed to create device class\n");
-        cdev_del(&crypto_cdev);
-        unregister_chrdev_region(dev_num, 1);
-        return PTR_ERR(crypto_class);
-    }
-    printk(KERN_NOTICE "[ChatDriver] Device class created\n");
-
-    /* Create device node in /dev */
-    crypto_device = device_create(crypto_class, NULL, dev_num, NULL, DEVICE_NAME);
-    if (IS_ERR(crypto_device)) {
-        printk(KERN_NOTICE "[ChatDriver] Failed to create device: %ld\n", PTR_ERR(crypto_device));
-        class_destroy(crypto_class);
-        cdev_del(&crypto_cdev);
-        unregister_chrdev_region(dev_num, 1);
-        return PTR_ERR(crypto_device);
-    }
-    printk(KERN_NOTICE "[ChatDriver] Device node created: /dev/%s\n", DEVICE_NAME);
-
-    printk(KERN_NOTICE "[ChatDriver] Module loaded successfully\n");
-    printk(KERN_NOTICE "[ChatDriver] SHA1 and DES enabled\n");
+    if (copy_to_user((struct crypto_req *)arg, &req, sizeof(req)))
+        return -EFAULT;
 
     return 0;
 }
 
-/**
- * Module cleanup
- */
-static void __exit chat_crypto_exit(void)
-{
-    dev_t dev_num = MKDEV(major_number, 0);
+static const struct file_operations crypto_fops = {
+    .owner = THIS_MODULE,
+    .unlocked_ioctl = crypto_ioctl,
+};
+// Dung miscdevice de tu dong tao file /dev/kma_crypto, do phai dung lenh mknod
+static struct miscdevice crypto_misc = {
+    .minor = MISC_DYNAMIC_MINOR,
+    .name = "kma_crypto",
+    .fops = &crypto_fops,
+};
 
-    printk(KERN_NOTICE "[ChatDriver] Unloading kernel crypto module\n");
-
-    /* Remove character device */
-    cdev_del(&crypto_cdev);
-    printk(KERN_NOTICE "[ChatDriver] Character device removed\n");
-
-    /* Destroy device node */
-    device_destroy(crypto_class, dev_num);
-    printk(KERN_NOTICE "[ChatDriver] Device node destroyed\n");
-
-    /* Destroy device class */
-    class_destroy(crypto_class);
-    printk(KERN_NOTICE "[ChatDriver] Device class destroyed\n");
-
-    /* Unregister character device region */
-    unregister_chrdev_region(dev_num, 1);
-    printk(KERN_NOTICE "[ChatDriver] Device region unregistered\n");
-
-    printk(KERN_NOTICE "[ChatDriver] Module unloaded\n");
+static int __init crypto_init(void) {
+    misc_register(&crypto_misc);
+    printk(KERN_INFO "KMA Crypto Driver Loaded: /dev/kma_crypto\n");
+    return 0;
 }
 
-module_init(chat_crypto_init);
-module_exit(chat_crypto_exit);
+static void __exit crypto_exit(void) {
+    misc_deregister(&crypto_misc);
+    printk(KERN_INFO "KMA Crypto Driver Unloaded\n");
+}
+
+module_init(crypto_init);
+module_exit(crypto_exit);
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("KMA Chatty Team");

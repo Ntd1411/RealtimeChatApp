@@ -1,14 +1,13 @@
 # Makefile for ChatDriver Kernel Crypto Module
-# Builds kernel module with custom SHA1 and DES implementations
-# Optimized for CentOS 6 (kernel 2.6.32)
+# Builds kernel module using kernel crypto API (SHA1 and DES)
+# Optimized for CentOS 6 (kernel 2.6.32+)
 
 # Kernel version and build directory
 KVERSION := $(shell uname -r)
 KBUILD_DIR := /lib/modules/$(KVERSION)/build
 
-# Source files - include SHA1 and DES implementations
+# Source files - kernel crypto API (no custom implementations)
 obj-m := chat_crypto.o
-chat_crypto-objs := chat_crypto.o sha1.o des.o
 
 # Module name
 MODULE_NAME := chat_crypto
@@ -19,12 +18,12 @@ EXTRA_CFLAGS := -I$(PWD)/../include
 MAKEFLAGS := -w
 
 # Default target
-all: module
+all: module test
 
 # Build the kernel module
 module:
 	@echo "Building kernel module for $(KVERSION)..."
-	@echo "Including: chat_crypto.c, sha1.c, des.c"
+	@echo "Using kernel crypto API (SHA1, DES)"
 	@if [ ! -d "$(KBUILD_DIR)" ]; then \
 		echo "Error: Kernel source not found at $(KBUILD_DIR)"; \
 		echo "Install kernel-devel-$(KVERSION)"; \
@@ -52,8 +51,8 @@ install: module
 	depmod -a
 	modprobe $(MODULE_NAME)
 	@echo "[✓] Kernel module installed and loaded"
-	@echo "Device created at: /dev/chat_crypto"
-	ls -la /dev/chat_crypto 2>/dev/null || echo "Note: Device will appear after first use"
+	@echo "Device available at: /dev/kma_crypto"
+	ls -la /dev/kma_crypto 2>/dev/null || echo "Note: Device node auto-created by miscdevice"
 
 # Uninstall the kernel module
 uninstall:
@@ -68,7 +67,18 @@ clean:
 	@echo "Cleaning build artifacts..."
 	make -C $(KBUILD_DIR) M=$(PWD) clean
 	rm -f *.o *.ko *.mod.c *.mod.o Module.symvers modules.order
+	rm -f chat_crypto_test
 	@echo "[✓] Clean complete"
+
+# Build test application
+test: chat_crypto_test
+	@echo "[✓] Test app built: ./chat_crypto_test"
+
+chat_crypto_test: chat_crypto_test.c
+	@echo "Building test application..."
+	gcc -o chat_crypto_test chat_crypto_test.c
+	chmod +x chat_crypto_test
+	@echo "[✓] Test app built successfully"
 
 # Distclean: clean + uninstall
 distclean: uninstall clean
@@ -76,25 +86,38 @@ distclean: uninstall clean
 
 # Help target
 help:
-	@echo "ChatDriver Kernel Crypto Module (Custom SHA1 & DES)"
+	@echo "ChatDriver Kernel Crypto Module (Kernel Crypto API)"
 	@echo ""
 	@echo "Build Targets:"
-	@echo "  make              - Build kernel module"
-	@echo "  sudo make install - Build and install (load into kernel)"
+	@echo "  make              - Build kernel module and test app"
+	@echo "  make module       - Build kernel module only"
+	@echo "  make test         - Build test application only"
+	@echo "  sudo make install - Build, install, and load module"
 	@echo "  sudo make uninstall - Unload and remove module"
 	@echo "  make clean        - Remove build artifacts"
 	@echo "  make distclean     - Clean + Uninstall"
 	@echo ""
 	@echo "Module Components:"
-	@echo "  - chat_crypto.c: Main module (ioctl handler)"
-	@echo "  - sha1.c/h: SHA1 implementation (RFC 3174)"
-	@echo "  - des.c/h: DES implementation (FIPS 46-3)"
+	@echo "  - chat_crypto.c: Main kernel module (ioctl handler)"
+	@echo "  - Uses kernel crypto API: SHA1, DES (ECB mode)"
+	@echo "  - Device: /dev/kma_crypto (miscdevice)"
+	@echo ""
+	@echo "Test Application:"
+	@echo "  ./chat_crypto_test sha1 <text>           - Hash text"
+	@echo "  ./chat_crypto_test enc <text> <key>      - Encrypt (DES)"
+	@echo "  ./chat_crypto_test dec <hex> <key>       - Decrypt (DES)"
 	@echo ""
 	@echo "Requirements:"
 	@echo "  - kernel-devel package"
 	@echo "  - kernel-headers package"
 	@echo "  - GCC compiler"
 	@echo ""
+	@echo "Examples:"
+	@echo "  make all"
+	@echo "  sudo make install"
+	@echo "  ./chat_crypto_test sha1 'hello'"
+	@echo "  ./chat_crypto_test enc 'hello' 'password'"
+	@echo ""
 
-.PHONY: all module install uninstall clean distclean help
+.PHONY: all module test install uninstall clean distclean help
 
