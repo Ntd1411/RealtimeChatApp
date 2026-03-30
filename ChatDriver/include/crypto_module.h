@@ -2,7 +2,6 @@
 #define CRYPTO_MODULE_H
 
 #include <linux/ioctl.h>
-#include <sys/types.h>
 
 /* Device file */
 #define CRYPTO_DEVICE_FILE "/dev/chat_crypto"
