@@ -87,6 +87,7 @@ ChatDriver/
 │   ├── CMakeLists.txt                 # CMake build configuration
 │   ├── src/
 │   │   ├── main.cpp                   # Application entry point
+│   │   ├── config.h                   # Centralized backend configuration
 │   │   ├── ui/                        # UI Components
 │   │   │   ├── logindialog.h/cpp      # Login window
 │   │   │   └── chatwindow.h/cpp       # Main chat interface
@@ -118,6 +119,7 @@ ChatDriver/
 Before starting, install:
 
 ```bash
+sudo yum install -y epel-release
 # Qt5 development files
 sudo yum install -y \
     qt5-qtbase-devel \
@@ -294,25 +296,19 @@ hostname -I
 # Use non-loopback IP: 192.168.1.100
 ```
 
-### 2. Edit Source Code on Each Client
+### 2. Edit Configuration File
 
-Edit `ChatDriver/qt_gui/src/api/apiclient.h`:
+Edit `ChatDriver/qt_gui/src/config.h` **Line 7**:
 ```cpp
-// From:
-ApiClient::ApiClient(const QString &baseUrl = "http://localhost:3000", ...)
+// BEFORE:
+static constexpr const char* BACKEND_URL = "http://localhost:3000";
 
-// To:
-ApiClient::ApiClient(const QString &baseUrl = "http://192.168.1.100:3000", ...)
+// AFTER (for multi-machine):
+static constexpr const char* BACKEND_URL = "http://192.168.1.100:3000";
 ```
 
-Edit `ChatDriver/qt_gui/src/network/socketclient.h`:
-```cpp
-// From:
-SocketClient::SocketClient(const QString &serverUrl = "http://localhost:3000", ...)
-
-// To:
-SocketClient::SocketClient(const QString &serverUrl = "http://192.168.1.100:3000", ...)
-```
+That's it! Both REST API and WebSocket will automatically use this URL.
+No need to edit multiple files anymore! 🎯
 
 ### 3. Firewall Configuration (if needed)
 
@@ -645,23 +641,35 @@ DES Engine + SHA1 Engine
 
 ## 🔧 Configuration
 
-### Client Configuration
+### Centralized Backend Configuration
 
-Edit these files to configure client behavior:
+Edit **one file only**: `src/config.h`
 
-**api/apiclient.h:**
 ```cpp
-// Default backend URL
-ApiClient client("http://localhost:3000");
-
-// Can be changed to any backend server
-ApiClient client("http://192.168.1.100:3000");
+// src/config.h - Line 7
+static constexpr const char* BACKEND_URL = "http://localhost:3000";
 ```
 
-**network/socketclient.h:**
+**To connect to a different server:**
 ```cpp
-// Default WebSocket URL (auto-converts http:// to ws://)
-SocketClient socket("http://localhost:3000", token);
+// For multi-machine setup:
+static constexpr const char* BACKEND_URL = "http://192.168.1.100:3000";
+
+// For production:
+static constexpr const char* BACKEND_URL = "http://prod-server.com:3000";
+```
+
+**Why this approach?**
+- ✅ Single location for backend URL configuration
+- ✅ Both REST API and WebSocket use same URL automatically
+- ✅ Easy to maintain and change
+- ✅ No need to search multiple files
+
+After editing, rebuild:
+```bash
+cd ChatDriver/qt_gui/build
+cmake ..
+make
 ```
 
 ### Build Configuration
