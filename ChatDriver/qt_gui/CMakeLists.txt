@@ -1,8 +1,9 @@
 cmake_minimum_required(VERSION 3.5)
 project(ChatApp)
 
-set(CMAKE_CXX_STANDARD 11)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# Use C++-98 compatible approach with compiler flags
+set(CMAKE_CXX_STANDARD 98)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++0x -Wno-c++0x-compat")
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
