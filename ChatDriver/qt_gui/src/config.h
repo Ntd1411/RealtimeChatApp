@@ -3,7 +3,7 @@
 
 #include <QString>
 
-#define BACKEND_URL "http://localhost:3000"
+#define BACKEND_URL "https://realtimechatapp-3xx5.onrender.com"
 
 class Config {
 public:
