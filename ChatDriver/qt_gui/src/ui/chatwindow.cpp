@@ -28,8 +28,8 @@ ChatWindow::ChatWindow(const QString &t, const QString &uid, const QString &u)
     
     socketClient = new SocketClient(Config::getBackendUrl(), token, this);
     
-    // Initialize crypto driver wrapper
-    cryptoDriver = new CryptoDriverQt();
+    // Initialize crypto driver
+    cryptoDriver = new KernelCryptoClient();
     if (!cryptoDriver->isOpen()) {
         QMessageBox::warning(this, "Warning", 
             "Crypto device not available. Messages won't be encrypted.");

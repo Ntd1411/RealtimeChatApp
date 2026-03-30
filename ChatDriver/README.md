@@ -26,7 +26,7 @@
 
 ## 📋 Architecture Overview
 
-### 5-Layer Model
+### 3-Layer Model
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -34,9 +34,9 @@
 │  ├─ UI Layer: Login Dialog, Chat Window             │
 │  ├─ API Layer: REST HTTP Client                     │
 │  ├─ Network Layer: WebSocket/Socket.IO Client       │
-│  └─ Crypto Layer: Qt wrapper around C library       │
+│  └─ Crypto Client: Direct kernel ioctl calls        │
 └─────────────────────────────────────────────────────┘
-              ↓ HTTP ↓ WebSocket ↓
+         ↓ HTTP ↓ WebSocket ↓ ioctl ↓
     ┌─────────────────────────────────┐
     │  Node.js Backend + MongoDB       │
     │  • User Management               │
@@ -44,11 +44,11 @@
     │  • Authentication (JWT)          │
     │  • Socket.IO Server              │
     └─────────────────────────────────┘
-              ↓ ioctl ↓
+
 ┌─────────────────────────────────────────────────────┐
-│      Kernel Crypto Module + Daemon                   │
-│  ├─ DES Encryption/Decryption                       │
-│  ├─ SHA1 Hashing                                    │
+│      Kernel Crypto Module                            │
+│  ├─ DES Encryption/Decryption (custom impl)         │
+│  ├─ SHA1 Hashing (custom impl)                      │
 │  ├─ Crypto Device Driver (/dev/chat_crypto)         │
 │  └─ Linux Loadable Module (LKM)                     │
 └─────────────────────────────────────────────────────┘
@@ -58,10 +58,8 @@
 
 | Component | Type | Language | Purpose | Location |
 |-----------|------|----------|---------|----------|
-| **crypto_lib** | C Library | C | Crypto operations via kernel ioctl | `crypto_lib/` |
-| **kernel_module** | LKM | C | Hardware crypto acceleration | `kernel_module/` |
-| **userspace_daemon** | Service | C | Device /socket management | `userspace_service/` |
-| **Qt App** | Desktop UI | C++11 + Qt5 | Chat interface with user interaction | `qt_gui/` |
+| **kernel_module** | LKM | C | Crypto acceleration (DES + SHA1) | `kernel_module/` |
+| **Qt App** | Desktop UI | C++11 + Qt5 | Chat interface with crypto client | `qt_gui/` |
 | **Backend** | REST + Socket.IO | Node.js | User management, message relay | `../backend/` |
 
 ---
@@ -71,18 +69,18 @@
 ```
 ChatDriver/
 ├── README.md                          # This file - Complete guide
-├── crypto_lib/                        # Pure C Crypto Library (Standalone)
-│   ├── Makefile                       # Build C library
-│   ├── cryptodriver.h                 # C API header
-│   └── cryptodriver.c                 # C implementation
-│
+├── BUILD.md                           # Build details
+├── IMPLEMENTATION.md                  # Implementation notes
+├──
 ├── kernel_module/                     # Kernel Loadable Module
 │   ├── Makefile                       # Build kernel module
-│   └── chat_crypto.c                  # Kernel module source
-│
-├── userspace_service/                 # Daemon Service
-│   └── chat_daemon.c                  # Daemon implementation
-│
+│   ├── chat_crypto.c                  # Main kernel module (~180 lines)
+│   ├── sha1.h / sha1.c                # SHA1 algorithm (RFC 3174, ~400 lines)
+│   └── des.h / des.c                  # DES algorithm (FIPS 46-3, ~900 lines)
+├──
+├── gtk_gui/                           # GTK Desktop Client (reference)
+│   └── chat_client.c                  # GTK implementation
+├──
 ├── qt_gui/                            # Modern Qt Desktop Client
 │   ├── CMakeLists.txt                 # CMake build configuration
 │   ├── src/
@@ -92,16 +90,17 @@ ChatDriver/
 │   │   │   ├── logindialog.h/cpp      # Login window
 │   │   │   └── chatwindow.h/cpp       # Main chat interface
 │   │   ├── api/                       # REST API Client
-│   │   │   └── apiclient.h/cpp        # HTTP API calls
+│   │   │   └── apiclient.h/cpp        # HTTP REST client
 │   │   ├── network/                   # Real-time Communication
 │   │   │   └── socketclient.h/cpp     # WebSocket/Socket.IO client
-│   │   └── crypto/                    # Crypto Wrapper
-│   │       └── cryptodriver_qt.h/cpp  # Qt wrapper for C library
+│   │   └── crypto/                    # Kernel Crypto Client
+│   │       └── kernel_crypto_client.h/cpp  # Direct ioctl to kernel
 │   └── build/                         # Build output directory
-│
-└── include/                           # Headers for reference
+├──
+└── include/                           # Shared headers
     ├── chat_protocol.h                # Protocol specification
-    └── crypto_module.h                # Kernel module interface
+    ├── crypto_module.h                # Kernel module ioctl interface
+    └── ...
 ```
 
 ---
@@ -154,61 +153,33 @@ g++ --version
 
 ## 🚀 Build & Installation
 
-### Step 1: Build Crypto Library
+### Step 1: Build and Install Kernel Module
 
-The crypto library is a standalone C library that can be reused by other projects.
-
-```bash
-cd ChatDriver/crypto_lib
-make                    # Build both shared (.so) and static (.a) libraries
-sudo make install       # Install to /usr/local/lib and /usr/local/include
-```
-
-**Verify:**
-```bash
-ls -la /usr/local/lib/libcryptodriver.*
-ls -la /usr/local/include/cryptodriver.h
-ldconfig -p | grep cryptodriver
-```
-
-**Output:**
-```
-/usr/local/lib/libcryptodriver.so (shared library)
-/usr/local/lib/libcryptodriver.a (static library)
-/usr/local/include/cryptodriver.h (C API header)
-```
-
-### Step 2: Build and Install Kernel Module
+The kernel module contains custom implementations of DES and SHA1 encryption algorithms.
 
 ```bash
 cd ChatDriver/kernel_module
-sudo make install       # Build and install kernel module
+make                    # Compile kernel module
+sudo make install       # Build and install into kernel
 ```
 
-**Verify:**
+**What gets built:**
+- `chat_crypto.ko` - Main kernel module with ioctl device driver
+- `sha1.o` - SHA1 algorithm (RFC 3174 compliant, ~400 lines)
+- `des.o` - DES algorithm (FIPS 46-3 compliant, ~900 lines)
+
+**Verify Installation:**
 ```bash
 lsmod | grep chat_crypto
-# Expected: chat_crypto    XXXX  0
+# Expected output: chat_crypto    XXXX  0
+
+ls -la /dev/chat_crypto
+# Expected: crw--w----  1 root root  XX,  XX  ...
 ```
 
-### Step 3: Start the Daemon
+### Step 2: Build Qt Application
 
-The daemon provides access to the crypto device.
-
-```bash
-sudo ChatDriver/build/chat_daemon &
-# or if built separately
-sudo /usr/local/bin/chat_daemon &
-```
-
-**Verify:**
-```bash
-ps aux | grep chat_daemon
-netstat -tlnp | grep 5555
-# Expected: tcp  0  0 0.0.0.0:5555  0.0.0.0:*  LISTEN
-```
-
-### Step 4: Build Qt Application
+The Qt application includes a direct kernel crypto client that calls `/dev/chat_crypto` via ioctl.
 
 ```bash
 cd ChatDriver/qt_gui
@@ -228,7 +199,15 @@ ls -la ./chatapp
 file ./chatapp
 ```
 
-### Step 5: Ensure Backend is Running
+**Build Configuration:**
+```cmake
+# CMakeLists.txt uses:
+# - kernel_crypto_client.h/cpp (direct ioctl to kernel)
+# - crypto_module.h (interface definitions)
+# - No external crypto library dependency
+```
+
+### Step 3: Ensure Backend is Running
 
 The backend must be running on port 3000 for the Qt app to connect.
 
@@ -253,14 +232,13 @@ npm start
 # Listening on http://localhost:3000
 ```
 
-**Terminal 2: Start Kernel Module & Daemon**
+**Terminal 2: Load Kernel Module**
 ```bash
-# Load kernel module (one-time setup)
-cd ChatDriver/kernel_module
-sudo make install
+# Load kernel module (one-time setup, after Step 1 build)
+sudo insmod ChatDriver/kernel_module/chat_crypto.ko
 
-# Start daemon
-sudo ChatDriver/build/chat_daemon &
+# Verify device is created
+ls -la /dev/chat_crypto
 ```
 
 **Terminal 3: Run Qt Application**
@@ -349,14 +327,12 @@ nc -zv 192.168.1.100 3000             # Test port connectivity
 - [ ] Qt5 libraries installed (`pkg-config --modversion Qt5Core`)
 - [ ] CMake installed (`cmake3 --version`)
 - [ ] GCC/G++ with C++11 support (`g++ --version`)
-- [ ] cryptodriver library built (`ls /usr/local/lib/libcryptodriver.*`)
-- [ ] cryptodriver header installed (`ls /usr/local/include/cryptodriver.h`)
+- [ ] Kernel headers installed (`uname -r` and kernel-devel matches)
 
 ### Runtime Checklist
+- [ ] Kernel module built (`ls ChatDriver/kernel_module/*.ko`)
 - [ ] Kernel module loaded (`lsmod | grep chat_crypto`)
 - [ ] Crypto device exists (`ls -la /dev/chat_crypto`)
-- [ ] Daemon running (`ps aux | grep chat_daemon`)
-- [ ] Daemon listening (`netstat -tlnp | grep 5555`)
 - [ ] Backend running on port 3000 (`curl http://localhost:3000`)
 
 ### Application Checklist
@@ -376,31 +352,34 @@ nc -zv 192.168.1.100 3000             # Test port connectivity
 
 ## 🐛 Troubleshooting
 
-### Issue: "libcryptodriver.so not found" (Linker Error)
+### Issue: "Cannot open /dev/chat_crypto" (Device Error)
 
-**Symptoms:** `error: cannot find -lcryptodriver`
+**Symptoms:** Qt app warning: "Crypto device not open", crypto operations fail
 
 **Solutions:**
 ```bash
-# 1. Check if library is installed
-ls -la /usr/local/lib/libcryptodriver.*
+# 1. Check if device exists
+ls -la /dev/chat_crypto
+# Should show: crw--w---- root root
 
-# 2. Update library cache
-sudo ldconfig
+# 2. Check if kernel module is loaded
+lsmod | grep chat_crypto
 
-# 3. Verify library is in cache
-ldconfig -p | grep cryptodriver
-
-# 4. If missing, rebuild and reinstall
-cd ChatDriver/crypto_lib
+# 3. If not loaded, rebuild and load
+cd ChatDriver/kernel_module
 make clean
 make
 sudo make install
-sudo ldconfig
 
-# 5. For CMake builds, ensure /usr/local/lib is in link directories
-# Edit ChatDriver/qt_gui/CMakeLists.txt and verify:
-# link_directories(/usr/local/lib)
+# 4. Verify module loaded
+lsmod | grep chat_crypto
+ls -la /dev/chat_crypto
+
+# 5. Check device permissions
+stat /dev/chat_crypto
+
+# 6. If permission denied, run app with sudo
+sudo ./chatapp
 ```
 
 ### Issue: "Crypto device not found at /dev/chat_crypto"
@@ -423,16 +402,13 @@ sudo make install
 
 # 4. Verify module is loaded
 lsmod | grep chat_crypto
-
-# 5. Check if daemon is running
-ps aux | grep chat_daemon
-netstat -tlnp | grep 5555
-
-# 6. If daemon not running, start it
-sudo ChatDriver/build/chat_daemon &
-
-# 7. Check device again
 ls -la /dev/chat_crypto
+
+# 5. Check device permissions
+stat /dev/chat_crypto
+
+# 6. If permission denied, run app with sudo
+sudo ./chatapp
 ```
 
 ### Issue: "Cannot connect to backend at http://localhost:3000"
@@ -528,50 +504,6 @@ make clean
 make
 ```
 
-### Issue: "Cannot load cryptodriver library" (Runtime)
-
-**Symptoms:** App starts but crypto operations fail, debug output shows errors
-
-**Solutions:**
-```bash
-# 1. Ensure libcryptodriver.so is in LD_LIBRARY_PATH
-export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
-./chatapp
-
-# 2. Use ldd to check dependencies
-ldd ./chatapp | grep crypto
-
-# 3. If NOTFOUND, update library cache
-sudo ldconfig
-
-# 4. Try running with full path
-/usr/local/lib/ld-linux.so.2 ./chatapp
-```
-
-### Issue: "Device read/write error" (Crypto Operations)
-
-**Symptoms:** Crypto device errors in debug output, operations fail
-
-**Solutions:**
-```bash
-# 1. Check device permissions
-ls -la /dev/chat_crypto
-# Should be: crw--w----  1 root root
-
-# 2. Check if user is in correct group
-groups $(whoami)
-
-# 3. Add user to device group (if applicable)
-sudo usermod -a -G chat_crypto $USER
-# Then logout and login again
-
-# 4. Or run app with sudo
-sudo ./chatapp
-
-# 5. Check daemon is still running
-ps aux | grep chat_daemon
-```
-
 ---
 
 ## 🔐 Security Architecture
@@ -582,7 +514,7 @@ ps aux | grep chat_daemon
 ```
 User enters password
         ↓
-Password → SHA1 hash (kernel module)
+Password → SHA1 hash via kernel ioctl
         ↓
 Hash sent to backend API
         ↓
@@ -593,7 +525,7 @@ Backend stores hash in MongoDB
 ```
 User types message
         ↓
-Message text → DES encrypt (kernel module)
+Message text → DES encrypt via kernel ioctl
         ↓
 Encrypted bytes → JSON encoded
         ↓
@@ -601,31 +533,29 @@ Sent over WebSocket to backend
         ↓
 Backend relays encrypted data to recipient
         ↓
-Recipient receives → DES decrypt (kernel module)
+Recipient receives → DES decrypt via kernel ioctl
         ↓
 Original message displayed
 ```
 
-#### 3. Device Communication
+#### 3. Device Communication (2-Layer)
 ```
-Application
+Qt Application (kernel_crypto_client.cpp)
     ↓
-CryptoDriverQt (Qt wrapper) — src/crypto/cryptodriver_qt.h/cpp
+Direct ioctl syscall to /dev/chat_crypto
     ↓
-cryptodriver (C library) — crypto_lib/cryptodriver.h/c
+Kernel Device Driver
     ↓
-Kernel Device Driver (/dev/chat_crypto)
-    ↓
-DES Engine + SHA1 Engine
+Custom DES + SHA1 Algorithms
 ```
 
-### Why DES in Kernel?
+### Why Kernel Crypto?
 
-✅ **Performance**: Hardware-optimized crypto operations  
+✅ **Performance**: Custom crypto implementations optimized for CentOS 6  
 ✅ **Security Boundary**: Kernel-level isolation from user processes  
-✅ **Legacy Support**: CentOS 6 compatibility  
-✅ **Direct Access**: ioctl-based communication without context switching  
-✅ **Reusability**: C library can be used by other applications  
+✅ **Direct Access**: No wrapper libraries, pure ioctl interface  
+✅ **Self-Contained**: Implementations don't depend on external crypto libs  
+✅ **Simplicity**: Qt calls kernel directly, no intermediate layers  
 
 ---
 
@@ -789,24 +719,22 @@ make -j4
 
 ## 📋 Makefile Reference
 
-### Crypto Library Makefile (crypto_lib/Makefile)
-
-```bash
-make                # Build shared (.so) and static (.a) libraries
-make install        # Install to /usr/local/lib and /usr/local/include
-make uninstall      # Remove installed libraries
-make clean          # Remove build artifacts (.o, .so, .a)
-make distclean       # Clean + uninstall (full cleanup)
-```
-
 ### Kernel Module Makefile (kernel_module/Makefile)
 
 ```bash
-make                # Build kernel module (.ko file)
-sudo make install   # Build + load into kernel
-sudo make uninstall # Unload + remove module
+make                # Compile kernel module (chat_crypto.ko)
+sudo make install   # Build + load module into kernel
+sudo make uninstall # Unload module from kernel
 make clean          # Remove build artifacts
+make help           # Show available targets
 ```
+
+**Module Components:**
+- `chat_crypto.o` - Main driver with ioctl handler (~180 lines)
+- `sha1.o` - SHA1 algorithm implementation (~400 lines)
+- `des.o` - DES algorithm implementation (~900 lines)
+
+**Output:** `chat_crypto.ko` - Kernel loadable module
 
 ---
 
@@ -818,22 +746,24 @@ make clean          # Remove build artifacts
 - [ ] HTTPS enabled for backend (use reverse proxy)
 - [ ] Firewall configured to allow only necessary ports
 - [ ] Kernel module loaded at system startup (via initrd)
-- [ ] Crypto library installed in production `/usr/local/lib`
 - [ ] Qt app packaged and distributed to users
 - [ ] Database backups configured
 - [ ] Error logging enabled in backend
 
 ### System Startup Integration
 
-To auto-load kernel module at boot:
+To auto-load kernel module at boot on CentOS 6:
 
 ```bash
-# Add to /etc/modules
+# Option 1: Add to /etc/modules (simple)
 echo "chat_crypto" | sudo tee -a /etc/modules
 
-# Or add to initrd (CentOS 6)
+# Option 2: Add to initrd (recommended for production)
 sudo /sbin/depmod -a
 sudo /sbin/mkinitrd -f /boot/initrd-$(uname -r).img $(uname -r)
+
+# Option 3: Create systemd service (if using systemd on CentOS 6.x+)
+sudo systemctl enable chat_crypto
 ```
 
 ---
@@ -842,8 +772,7 @@ sudo /sbin/mkinitrd -f /boot/initrd-$(uname -r).img $(uname -r)
 
 ### Documentation Files
 - `README.md` - This file (Complete guide)
-- `crypto_lib/` - Crypto library source and Makefile
-- `kernel_module/` - Kernel module source
+- `kernel_module/` - Kernel module source (chat_crypto.c, sha1.c, des.c)
 - `qt_gui/src/` - Qt application source code
 
 ### External Resources

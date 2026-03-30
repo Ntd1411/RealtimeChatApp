@@ -12,7 +12,7 @@
 #include <QTimer>
 #include "../api/apiclient.h"
 #include "../network/socketclient.h"
-#include "../crypto/cryptodriver_qt.h"
+#include "../crypto/kernel_crypto_client.h"
 
 class ChatWindow : public QMainWindow {
     Q_OBJECT
@@ -74,7 +74,7 @@ private:
     // Data
     ApiClient *apiClient;
     SocketClient *socketClient;
-    CryptoDriverQt *cryptoDriver;
+    KernelCryptoClient *cryptoDriver;
     
     QString token;
     QString user_id;

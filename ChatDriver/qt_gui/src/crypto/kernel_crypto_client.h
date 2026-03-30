@@ -1,15 +1,17 @@
-#ifndef CRYPTODRIVER_QT_H
-#define CRYPTODRIVER_QT_H
+#ifndef KERNEL_CRYPTO_CLIENT_H
+#define KERNEL_CRYPTO_CLIENT_H
 
 #include <QString>
 #include <QByteArray>
 
-typedef struct crypto_driver CryptoDriver; // Opaque C type
-
-class CryptoDriverQt {
+/**
+ * Direct kernel driver client for crypto operations
+ * Communicates with /dev/chat_crypto using ioctl syscalls
+ */
+class KernelCryptoClient {
 public:
-    CryptoDriverQt();
-    ~CryptoDriverQt();
+    KernelCryptoClient();
+    ~KernelCryptoClient();
 
     bool isOpen() const;
     
@@ -24,7 +26,9 @@ public:
     QByteArray desDecrypt(const QByteArray &key, const QByteArray &ciphertext);
 
 private:
-    CryptoDriver *driver;
+    int device_fd;  // File descriptor for /dev/chat_crypto
+    bool openDevice();
+    void closeDevice();
 };
 
-#endif // CRYPTODRIVER_QT_H
+#endif // KERNEL_CRYPTO_CLIENT_H

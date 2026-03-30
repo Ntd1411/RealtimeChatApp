@@ -27,7 +27,7 @@ set(SOURCES
     src/ui/chatwindow.cpp
     src/api/apiclient.cpp
     src/network/socketclient.cpp
-    src/crypto/cryptodriver_qt.cpp
+    src/crypto/kernel_crypto_client.cpp
 )
 
 set(HEADERS
@@ -36,7 +36,7 @@ set(HEADERS
     src/ui/chatwindow.h
     src/api/apiclient.h
     src/network/socketclient.h
-    src/crypto/cryptodriver_qt.h
+    src/crypto/kernel_crypto_client.h
 )
 
 # Create executable
@@ -54,7 +54,6 @@ target_link_libraries(chatapp
     Qt5::WebSockets
     Qt5::Concurrent
     Threads::Threads
-    cryptodriver
 )
 
 # Include directories
