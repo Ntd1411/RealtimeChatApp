@@ -3,11 +3,12 @@
 
 #include <QString>
 
+#define BACKEND_URL "http://localhost:3000"
+
 class Config {
 public:
     // Backend server configuration
     // Change this single value to update server for entire app
-    static constexpr const char* BACKEND_URL = "http://localhost:3000";
     
     // Derived URLs (auto-generated from BACKEND_URL)
     static QString getBackendUrl() {
