@@ -11,7 +11,7 @@ class LoginDialog : public QDialog {
     Q_OBJECT
 
 public:
-    LoginDialog(QWidget *parent = nullptr);
+    LoginDialog(QWidget *parent = 0);
     
     QString getToken() const { return token; }
     QString getUserId() const { return user_id; }

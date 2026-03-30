@@ -22,7 +22,7 @@ public:
     ~ChatWindow();
 
 protected:
-    void closeEvent(QCloseEvent *event) override;
+    void closeEvent(QCloseEvent *event);
 
 private slots:
     // UI Events

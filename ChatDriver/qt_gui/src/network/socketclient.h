@@ -11,7 +11,7 @@ class SocketClient : public QObject {
     Q_OBJECT
 
 public:
-    SocketClient(const QString &serverUrl, const QString &token, QObject *parent = nullptr);
+    SocketClient(const QString &serverUrl, const QString &token, QObject *parent = 0);
     ~SocketClient();
     
     void connect();

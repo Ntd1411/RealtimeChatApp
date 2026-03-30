@@ -12,7 +12,7 @@ class ApiClient : public QObject {
     Q_OBJECT
 
 public:
-    ApiClient(const QString &baseUrl = "http://localhost:3000", QObject *parent = nullptr);
+    ApiClient(const QString &baseUrl = "http://localhost:3000", QObject *parent = 0);
     
     // Auth endpoints
     void login(const QString &username, const QString &password);
