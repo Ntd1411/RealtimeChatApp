@@ -69,7 +69,7 @@ The Qt application includes a direct kernel crypto client that calls `/dev/chat_
 ```bash
 cd ChatDriver/qt_gui
 mkdir build && cd build
-cmake ..
+cmake3 ..
 make -j4
 ```
 
