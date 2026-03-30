@@ -11,12 +11,12 @@ SocketClient::SocketClient(const QString &serverUrl, const QString &t, QObject *
 {
     webSocket = new QWebSocket(QString(), QWebSocketProtocol::VersionLatest, this);
     
-    connect(webSocket, &QWebSocket::connected, this, &SocketClient::onConnected);
-    connect(webSocket, &QWebSocket::disconnected, this, &SocketClient::onDisconnected);
-    connect(webSocket, QOverload<const QString &>::of(&QWebSocket::textMessageReceived),
-            this, &SocketClient::onTextMessageReceived);
-    connect(webSocket, QOverload<QAbstractSocket::SocketError>::of(&QWebSocket::error),
-            this, &SocketClient::onError);
+    QObject::connect(webSocket, SIGNAL(connected()), this, SLOT(onConnected()));
+    QObject::connect(webSocket, SIGNAL(disconnected()), this, SLOT(onDisconnected()));
+    QObject::connect(webSocket, SIGNAL(textMessageReceived(QString)), 
+                     this, SLOT(onTextMessageReceived(QString)));
+    QObject::connect(webSocket, SIGNAL(error(QAbstractSocket::SocketError)), 
+                     this, SLOT(onError(QAbstractSocket::SocketError)));
 }
 
 SocketClient::~SocketClient()
