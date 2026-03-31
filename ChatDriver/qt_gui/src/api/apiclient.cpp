@@ -178,6 +178,24 @@ void ApiClient::onLoginFinished()
     
     logToFile("[LOGIN-RESPONSE] Response size: " + QString::number(responseData.size()) + " bytes");
     logToFile("[LOGIN-RESPONSE] Raw response: " + QString::fromUtf8(responseData));
+    // In mã hex của response để kiểm tra ký tự lạ
+    QString hexDump;
+    for (int i = 0; i < responseData.size(); ++i) {
+        hexDump += QString::number((unsigned char)responseData[i], 16).rightJustified(2, '0').toUpper();
+        if ((i+1) % 2 == 0) hexDump += ' ';
+    }
+    logToFile("[LOGIN-RESPONSE] Hex dump: " + hexDump);
+
+    // Loại bỏ BOM UTF-8 nếu có
+    if (responseData.size() >= 3 && (unsigned char)responseData[0] == 0xEF && (unsigned char)responseData[1] == 0xBB && (unsigned char)responseData[2] == 0xBF) {
+        logToFile("[LOGIN-RESPONSE] Detected UTF-8 BOM, removing...");
+        responseData = responseData.mid(3);
+    }
+    // Loại bỏ ký tự trắng đầu/cuối (trim)
+    while (!responseData.isEmpty() && (responseData[0] == '\r' || responseData[0] == '\n' || responseData[0] == ' '))
+        responseData = responseData.mid(1);
+    while (!responseData.isEmpty() && (responseData[responseData.size()-1] == '\r' || responseData[responseData.size()-1] == '\n' || responseData[responseData.size()-1] == ' '))
+        responseData.chop(1);
     
     if (responseData.isEmpty()) {
         logToFile("[LOGIN-RESPONSE] ERROR: Response is EMPTY!");
@@ -187,10 +205,11 @@ void ApiClient::onLoginFinished()
         return;
     }
     
-    QJsonDocument doc = QJsonDocument::fromJson(responseData);
-    
+    QJsonParseError jsonError;
+    QJsonDocument doc = QJsonDocument::fromJson(responseData, &jsonError);
     if (doc.isNull()) {
         logToFile("[LOGIN-RESPONSE] ERROR: Response is NOT valid JSON!");
+        logToFile("[LOGIN-RESPONSE] QJsonParseError: " + jsonError.errorString() + " at offset " + QString::number(jsonError.offset));
         logToFile("[LOGIN-RESPONSE] First 200 chars: " + QString::fromUtf8(responseData.left(200)));
         emit loginFailed("Invalid JSON response from server" + responseData);
         loginReply->deleteLater();
