@@ -154,127 +154,147 @@ void ApiClient::getMe()
 void ApiClient::onLoginFinished()
 {
     logToFile("[LOGIN-RESPONSE] Received response");
-    
+
     if (!loginReply) {
         logToFile("[LOGIN-RESPONSE] ERROR: loginReply is NULL!");
         emit loginFailed("No response from server");
         return;
     }
-    
+
     int httpStatus = loginReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     logToFile("[LOGIN-RESPONSE] HTTP Status: " + QString::number(httpStatus));
     logToFile("[LOGIN-RESPONSE] Error code: " + QString::number(loginReply->error()));
-    
+
     if (loginReply->error() != QNetworkReply::NoError) {
         QString errorStr = loginReply->errorString();
         logToFile("[LOGIN-RESPONSE] Network Error: " + errorStr);
         emit loginFailed("Network error: " + errorStr);
         loginReply->deleteLater();
-        loginReply = 0;
+        loginReply = nullptr;
         return;
     }
-    
+
     QByteArray responseData = loginReply->readAll();
-    
     logToFile("[LOGIN-RESPONSE] Response size: " + QString::number(responseData.size()) + " bytes");
-    logToFile("[LOGIN-RESPONSE] Raw response: " + QString::fromUtf8(responseData));
-    // In mã hex của response để kiểm tra ký tự lạ
+
+    // Log raw response (có thể chứa ký tự lạ)
+    logToFile("[LOGIN-RESPONSE] Raw response: " + QString::fromLatin1(responseData));
+
+    // Hex dump để debug
     QString hexDump;
     for (int i = 0; i < responseData.size(); ++i) {
         hexDump += QString::number((unsigned char)responseData[i], 16).rightJustified(2, '0').toUpper();
-        if ((i+1) % 2 == 0) hexDump += ' ';
+        if ((i + 1) % 16 == 0) hexDump += "\n";
+        else if ((i + 1) % 2 == 0) hexDump += " ";
     }
-    logToFile("[LOGIN-RESPONSE] Hex dump: " + hexDump);
+    logToFile("[LOGIN-RESPONSE] Hex dump:\n" + hexDump);
 
-    // Loại bỏ BOM UTF-8 nếu có
-    if (responseData.size() >= 3 && (unsigned char)responseData[0] == 0xEF && (unsigned char)responseData[1] == 0xBB && (unsigned char)responseData[2] == 0xBF) {
-        logToFile("[LOGIN-RESPONSE] Detected UTF-8 BOM, removing...");
+    // Log Content-Type từ server
+    QString contentType = loginReply->header(QNetworkRequest::ContentTypeHeader).toString();
+    logToFile("[LOGIN-RESPONSE] Content-Type: " + contentType);
+
+    // ================== XỬ LÝ ENCODING - PHẦN QUAN TRỌNG NHẤT ==================
+    responseData = responseData.trimmed();  // trim whitespace + \r\n
+
+    // Loại BOM UTF-8 nếu có
+    if (responseData.size() >= 3 &&
+        (unsigned char)responseData[0] == 0xEF &&
+        (unsigned char)responseData[1] == 0xBB &&
+        (unsigned char)responseData[2] == 0xBF) {
+        logToFile("[LOGIN-RESPONSE] Detected and removed UTF-8 BOM");
         responseData = responseData.mid(3);
     }
-    // Loại bỏ ký tự trắng đầu/cuối (trim)
-    while (!responseData.isEmpty() && (responseData[0] == '\r' || responseData[0] == '\n' || responseData[0] == ' '))
-        responseData = responseData.mid(1);
-    while (!responseData.isEmpty() && (responseData[responseData.size()-1] == '\r' || responseData[responseData.size()-1] == '\n' || responseData[responseData.size()-1] == ' '))
-        responseData.chop(1);
-    
+
     if (responseData.isEmpty()) {
-        logToFile("[LOGIN-RESPONSE] ERROR: Response is EMPTY!");
+        logToFile("[LOGIN-RESPONSE] ERROR: Response is EMPTY after trim!");
         emit loginFailed("Server returned empty response");
         loginReply->deleteLater();
-        loginReply = 0;
+        loginReply = nullptr;
         return;
     }
-    
-    QJsonParseError jsonError;
-    QJsonDocument doc = QJsonDocument::fromJson(responseData, &jsonError);
-    if (doc.isNull()) {
-        logToFile("[LOGIN-RESPONSE] ERROR: Response is NOT valid JSON!");
-        logToFile("[LOGIN-RESPONSE] QJsonParseError: " + jsonError.errorString() + " at offset " + QString::number(jsonError.offset));
-        logToFile("[LOGIN-RESPONSE] First 200 chars: " + QString::fromUtf8(responseData.left(200)));
-        // Thử chuyển responseData sang UTF-8 từ Latin1 nếu lỗi parse do encoding
-        QByteArray tryUtf8 = QString::fromLatin1(responseData).toUtf8();
-        QJsonParseError jsonError2;
-        QJsonDocument doc2 = QJsonDocument::fromJson(tryUtf8, &jsonError2);
-        if (!doc2.isNull()) {
-            logToFile("[LOGIN-RESPONSE] Parse OK khi convert từ Latin1 sang UTF-8!");
-            doc = doc2;
-            responseData = tryUtf8;
-        } else {
-            logToFile("[LOGIN-RESPONSE] Parse vẫn lỗi sau khi convert Latin1->UTF8: " + jsonError2.errorString());
-            emit loginFailed("Invalid JSON response from server" + responseData);
-            loginReply->deleteLater();
-            loginReply = 0;
-            return;
-        }
+
+    // === Normalize UTF-8 cho CentOS 6 (fix invalid UTF8 string) ===
+    QString decodedStr;
+    QByteArray normalizedData;
+
+    // Cách 1: fromUtf8 với replacement cho ký tự lỗi
+    decodedStr = QString::fromUtf8(responseData.constData(), responseData.size(), 
+                                   QString::ReplacementForInvalidUtf8);
+
+    // Cách 2: Nếu vẫn có ký tự thay thế → thử fromLatin1 (thường hiệu quả với tiếng Việt)
+    if (decodedStr.contains(QChar::ReplacementCharacter)) {
+        logToFile("[LOGIN-RESPONSE] Detected invalid UTF-8, trying fromLatin1...");
+        decodedStr = QString::fromLatin1(responseData.constData(), responseData.size());
     }
-    
+
+    // Chuẩn hóa lại thành UTF-8 sạch
+    normalizedData = decodedStr.toUtf8();
+
+    logToFile("[LOGIN-RESPONSE] Normalized response: " + decodedStr.left(300));
+
+    // Parse JSON từ dữ liệu đã normalize
+    QJsonParseError jsonError;
+    QJsonDocument doc = QJsonDocument::fromJson(normalizedData, &jsonError);
+
+    if (doc.isNull()) {
+        logToFile("[LOGIN-RESPONSE] ERROR: Still cannot parse JSON: " + jsonError.errorString() 
+                  + " at offset " + QString::number(jsonError.offset));
+        logToFile("[LOGIN-RESPONSE] First 200 chars: " + decodedStr.left(200));
+
+        emit loginFailed("Invalid JSON response from server");
+        loginReply->deleteLater();
+        loginReply = nullptr;
+        return;
+    }
+
+    logToFile("[LOGIN-RESPONSE] JSON parsed successfully!");
+
     if (!doc.isObject()) {
-        logToFile("[LOGIN-RESPONSE] ERROR: Response is JSON but NOT an object!");
-        if (doc.isArray()) {
-            logToFile("[LOGIN-RESPONSE] Response is an array, not object");
-        }
+        logToFile("[LOGIN-RESPONSE] ERROR: Response is not a JSON object!");
         emit loginFailed("Invalid response format from server");
         loginReply->deleteLater();
-        loginReply = 0;
+        loginReply = nullptr;
         return;
     }
-    
+
     QJsonObject obj = doc.object();
     logToFile("[LOGIN-RESPONSE] JSON keys: " + obj.keys().join(", "));
-    
-    // Support new format: {"message": "...", "token": "..."}
+
+    // === XỬ LÝ 2 FORMAT JSON ===
     if (obj.contains("token")) {
+        // New format: {"message": "...", "token": "..."}
         token = obj["token"].toString();
-        logToFile("[LOGIN-RESPONSE] New format detected (token at root)");
+        logToFile("[LOGIN-RESPONSE] New format detected - Token received");
         logToFile("[LOGIN-RESPONSE] Token length: " + QString::number(token.length()));
-        logToFile("[LOGIN-RESPONSE] Emitting loginSuccess");
         emit loginSuccess(obj);
-        // Fetch user info from /auth/me
+
         logToFile("[LOGIN-RESPONSE] Fetching user info from /auth/me...");
         getMe();
-    } 
-    // Support old format: {"data": {"token": "...", "user": {...}}}
+    }
     else if (obj.contains("data")) {
-        logToFile("[LOGIN-RESPONSE] Old format detected (token in data)");
-        QJsonObject data = obj["data"].toObject();
-        token = data["token"].toString();
-        QJsonObject user = data["user"].toObject();
+        // Old format: {"data": {"token": "...", "user": {...}}}
+        logToFile("[LOGIN-RESPONSE] Old format detected");
+        QJsonObject dataObj = obj["data"].toObject();
+        token = dataObj["token"].toString();
+
+        QJsonObject user = dataObj["user"].toObject();
         current_user_id = user["_id"].toString();
         current_username = user["username"].toString();
+
         logToFile("[LOGIN-RESPONSE] User ID: " + current_user_id);
         logToFile("[LOGIN-RESPONSE] Username: " + current_username);
-        logToFile("[LOGIN-RESPONSE] Emitting loginSuccess");
-        emit loginSuccess(data);
-    } 
+        emit loginSuccess(dataObj);
+    }
     else {
-        logToFile("[LOGIN-RESPONSE] No 'token' or 'data' field in response!");
-        QString errorMsg = obj["message"].toString("Unknown error");
-        logToFile("[LOGIN-RESPONSE] Error message: " + errorMsg);
+        // Error case
+        QString errorMsg = obj["message"].toString("Unknown error from server");
+        logToFile("[LOGIN-RESPONSE] No token or data field. Error: " + errorMsg);
         emit loginFailed(errorMsg);
     }
+
     loginReply->deleteLater();
-    loginReply = 0;
-    logToFile("================================\n");
+    loginReply = nullptr;
+    logToFile("[LOGIN-RESPONSE] Login processing finished.\n================================");
 }
 
 void ApiClient::onSignupFinished()
