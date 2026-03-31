@@ -170,7 +170,7 @@ void ApiClient::onLoginFinished()
         logToFile("[LOGIN-RESPONSE] Network Error: " + errorStr);
         emit loginFailed("Network error: " + errorStr);
         loginReply->deleteLater();
-        loginReply = nullptr;
+        loginReply = 0;
         return;
     }
 
@@ -209,41 +209,32 @@ void ApiClient::onLoginFinished()
         logToFile("[LOGIN-RESPONSE] ERROR: Response is EMPTY after trim!");
         emit loginFailed("Server returned empty response");
         loginReply->deleteLater();
-        loginReply = nullptr;
+        loginReply = 0;
         return;
     }
 
     // === Normalize UTF-8 cho CentOS 6 (fix invalid UTF8 string) ===
-    QString decodedStr;
-    QByteArray normalizedData;
-
-    // Cách 1: fromUtf8 với replacement cho ký tự lỗi
-    decodedStr = QString::fromUtf8(responseData.constData(), responseData.size(), 
-                                   QString::ReplacementForInvalidUtf8);
-
-    // Cách 2: Nếu vẫn có ký tự thay thế → thử fromLatin1 (thường hiệu quả với tiếng Việt)
-    if (decodedStr.contains(QChar::ReplacementCharacter)) {
+    QString decodedStr = QString::fromUtf8(responseData.constData(), responseData.size());
+    // Nếu vẫn có ký tự thay thế (ký tự lỗi), thử fromLatin1
+    bool hasReplacement = false;
+    for (int i = 0; i < decodedStr.length(); ++i) {
+        if (decodedStr.at(i).unicode() == 0xFFFD) { hasReplacement = true; break; }
+    }
+    if (hasReplacement) {
         logToFile("[LOGIN-RESPONSE] Detected invalid UTF-8, trying fromLatin1...");
         decodedStr = QString::fromLatin1(responseData.constData(), responseData.size());
     }
-
-    // Chuẩn hóa lại thành UTF-8 sạch
-    normalizedData = decodedStr.toUtf8();
-
+    QByteArray normalizedData = decodedStr.toUtf8();
     logToFile("[LOGIN-RESPONSE] Normalized response: " + decodedStr.left(300));
-
-    // Parse JSON từ dữ liệu đã normalize
     QJsonParseError jsonError;
     QJsonDocument doc = QJsonDocument::fromJson(normalizedData, &jsonError);
-
     if (doc.isNull()) {
         logToFile("[LOGIN-RESPONSE] ERROR: Still cannot parse JSON: " + jsonError.errorString() 
                   + " at offset " + QString::number(jsonError.offset));
         logToFile("[LOGIN-RESPONSE] First 200 chars: " + decodedStr.left(200));
-
         emit loginFailed("Invalid JSON response from server");
         loginReply->deleteLater();
-        loginReply = nullptr;
+        loginReply = 0;
         return;
     }
 
@@ -253,7 +244,7 @@ void ApiClient::onLoginFinished()
         logToFile("[LOGIN-RESPONSE] ERROR: Response is not a JSON object!");
         emit loginFailed("Invalid response format from server");
         loginReply->deleteLater();
-        loginReply = nullptr;
+        loginReply = 0;
         return;
     }
 
@@ -293,7 +284,7 @@ void ApiClient::onLoginFinished()
     }
 
     loginReply->deleteLater();
-    loginReply = nullptr;
+    loginReply = 0;
     logToFile("[LOGIN-RESPONSE] Login processing finished.\n================================");
 }
 
