@@ -232,10 +232,36 @@ void ApiClient::onLoginFinished()
         logToFile("[LOGIN-RESPONSE] ERROR: Still cannot parse JSON: " + jsonError.errorString() 
                   + " at offset " + QString::number(jsonError.offset));
         logToFile("[LOGIN-RESPONSE] First 200 chars: " + decodedStr.left(200));
-        emit loginFailed("Invalid JSON response from server");
-        loginReply->deleteLater();
-        loginReply = 0;
-        return;
+
+        // Thử loại bỏ trường message (và ký tự không phải ASCII)
+        QString asciiOnly = decodedStr;
+        for (int i = 0; i < asciiOnly.length(); ++i) {
+            if (asciiOnly.at(i).unicode() > 127) asciiOnly[i] = ' ';
+        }
+        // Loại bỏ trường "message": ... (dùng regex đơn giản)
+        int msgIdx = asciiOnly.indexOf("\"message\"");
+        if (msgIdx != -1) {
+            int commaIdx = asciiOnly.indexOf(',', msgIdx);
+            int braceIdx = asciiOnly.indexOf('}', msgIdx);
+            int endIdx = (commaIdx != -1 && commaIdx < braceIdx) ? commaIdx+1 : braceIdx;
+            if (endIdx > msgIdx) {
+                asciiOnly.remove(msgIdx, endIdx - msgIdx);
+            }
+        }
+        QByteArray asciiData = asciiOnly.toUtf8();
+        logToFile("[LOGIN-RESPONSE] Try parse after removing message/ascii: " + asciiOnly.left(200));
+        QJsonParseError jsonError2;
+        QJsonDocument doc2 = QJsonDocument::fromJson(asciiData, &jsonError2);
+        if (!doc2.isNull()) {
+            logToFile("[LOGIN-RESPONSE] Parse OK after removing message/ascii!");
+            doc = doc2;
+        } else {
+            logToFile("[LOGIN-RESPONSE] Still cannot parse after removing message/ascii: " + jsonError2.errorString());
+            emit loginFailed("Invalid JSON response from server");
+            loginReply->deleteLater();
+            loginReply = 0;
+            return;
+        }
     }
 
     logToFile("[LOGIN-RESPONSE] JSON parsed successfully!");
