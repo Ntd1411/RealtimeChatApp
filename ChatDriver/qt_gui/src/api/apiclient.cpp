@@ -211,10 +211,21 @@ void ApiClient::onLoginFinished()
         logToFile("[LOGIN-RESPONSE] ERROR: Response is NOT valid JSON!");
         logToFile("[LOGIN-RESPONSE] QJsonParseError: " + jsonError.errorString() + " at offset " + QString::number(jsonError.offset));
         logToFile("[LOGIN-RESPONSE] First 200 chars: " + QString::fromUtf8(responseData.left(200)));
-        emit loginFailed("Invalid JSON response from server" + responseData);
-        loginReply->deleteLater();
-        loginReply = 0;
-        return;
+        // Thử chuyển responseData sang UTF-8 từ Latin1 nếu lỗi parse do encoding
+        QByteArray tryUtf8 = QString::fromLatin1(responseData).toUtf8();
+        QJsonParseError jsonError2;
+        QJsonDocument doc2 = QJsonDocument::fromJson(tryUtf8, &jsonError2);
+        if (!doc2.isNull()) {
+            logToFile("[LOGIN-RESPONSE] Parse OK khi convert từ Latin1 sang UTF-8!");
+            doc = doc2;
+            responseData = tryUtf8;
+        } else {
+            logToFile("[LOGIN-RESPONSE] Parse vẫn lỗi sau khi convert Latin1->UTF8: " + jsonError2.errorString());
+            emit loginFailed("Invalid JSON response from server" + responseData);
+            loginReply->deleteLater();
+            loginReply = 0;
+            return;
+        }
     }
     
     if (!doc.isObject()) {
