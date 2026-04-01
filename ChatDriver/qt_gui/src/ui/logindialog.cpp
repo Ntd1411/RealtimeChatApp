@@ -134,21 +134,9 @@ void LoginDialog::onLoginClicked()
 
 void LoginDialog::onRegisterClicked()
 {
-    QString u = usernameEdit->text().trimmed();
-    QString p = passwordEdit->text();
-    
-    if (u.isEmpty() || p.isEmpty()) {
-        statusLabel->setText("Please enter username and password");
-        statusLabel->setStyleSheet("color: red; font-size: 10px;");
-        return;
-    }
-    
-    statusLabel->setText("Creating account...");
-    statusLabel->setStyleSheet("color: blue; font-size: 10px;");
-    loginButton->setEnabled(false);
-    registerButton->setEnabled(false);
-    
-    apiClient->signup(u, p);
+    SignUpDialog *signupDialog = new SignUpDialog(apiClient, this);
+    signupDialog->exec();
+    signupDialog->deleteLater();
 }
 
 void LoginDialog::onLoginSuccess(const QJsonObject &user)

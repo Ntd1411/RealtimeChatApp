@@ -105,5 +105,17 @@ npm start            # Start Node.js server
 ### Step 4: Running the Application Chat
 
 ```bash
-cd ChatDriver/qt_gui/build
+cd RealtimeChatApp/ChatDriver/qt_gui/build
+./chatapp
+```
+
+### Quick start
+```bash
+cd RealtimeChatApp/ChatDriver/kernel_module
+make clean
+make
+make install
+cd ~
+cd RealtimeChatApp/ChatDriver/qt_gui/build
+./chatapp
 ```

@@ -6,6 +6,7 @@
 #include <QPushButton>
 #include <QLabel>
 #include "../api/apiclient.h"
+#include "signupdialog.h"
 
 class LoginDialog : public QDialog {
     Q_OBJECT

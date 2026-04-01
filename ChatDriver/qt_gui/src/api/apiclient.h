@@ -16,7 +16,7 @@ public:
     
     // Auth endpoints
     void login(const QString &username, const QString &password);
-    void signup(const QString &username, const QString &password);
+    void signup(const QString &username, const QString &password, const QString &fullName, const QString &email);
     void logout();
     void getMe();
     
@@ -78,6 +78,9 @@ private:
     
     QNetworkRequest createRequest(const QString &endpoint);
     void handleJsonResponse(QNetworkReply *reply);
+    
+    // Helper functions
+    QString normalizeVietnamese(const QString &input);
 };
 
 #endif // APICLIENT_H

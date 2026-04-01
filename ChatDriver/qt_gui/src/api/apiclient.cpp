@@ -23,6 +23,94 @@ void logToFile(const QString &msg) {
     }
 }
 
+// Hàm chuẩn hóa tiếng Việt - bỏ dấu
+QString normalizeVietnamese(const QString &input)
+{
+    QString result = input;
+    
+    // Map các ký tự có dấu tiếng Việt thành ký tự không dấu
+    QMap<QString, QString> vietnameseMap;
+    
+    // a, ă, â
+    vietnameseMap["á"] = "a"; vietnameseMap["à"] = "a"; vietnameseMap["ả"] = "a"; 
+    vietnameseMap["ã"] = "a"; vietnameseMap["ạ"] = "a";
+    vietnameseMap["ă"] = "a"; vietnameseMap["ắ"] = "a"; vietnameseMap["ằ"] = "a";
+    vietnameseMap["ẳ"] = "a"; vietnameseMap["ẵ"] = "a"; vietnameseMap["ặ"] = "a";
+    vietnameseMap["â"] = "a"; vietnameseMap["ấ"] = "a"; vietnameseMap["ầ"] = "a";
+    vietnameseMap["ẩ"] = "a"; vietnameseMap["ẫ"] = "a"; vietnameseMap["ậ"] = "a";
+    
+    // e, ê
+    vietnameseMap["é"] = "e"; vietnameseMap["è"] = "e"; vietnameseMap["ẻ"] = "e";
+    vietnameseMap["ẽ"] = "e"; vietnameseMap["ẹ"] = "e";
+    vietnameseMap["ê"] = "e"; vietnameseMap["ế"] = "e"; vietnameseMap["ề"] = "e";
+    vietnameseMap["ể"] = "e"; vietnameseMap["ễ"] = "e"; vietnameseMap["ệ"] = "e";
+    
+    // i
+    vietnameseMap["í"] = "i"; vietnameseMap["ì"] = "i"; vietnameseMap["ỉ"] = "i";
+    vietnameseMap["ĩ"] = "i"; vietnameseMap["ị"] = "i";
+    
+    // o, ô, ơ
+    vietnameseMap["ó"] = "o"; vietnameseMap["ò"] = "o"; vietnameseMap["ỏ"] = "o";
+    vietnameseMap["õ"] = "o"; vietnameseMap["ọ"] = "o";
+    vietnameseMap["ô"] = "o"; vietnameseMap["ố"] = "o"; vietnameseMap["ồ"] = "o";
+    vietnameseMap["ổ"] = "o"; vietnameseMap["ỗ"] = "o"; vietnameseMap["ộ"] = "o";
+    vietnameseMap["ơ"] = "o"; vietnameseMap["ớ"] = "o"; vietnameseMap["ờ"] = "o";
+    vietnameseMap["ở"] = "o"; vietnameseMap["ỡ"] = "o"; vietnameseMap["ợ"] = "o";
+    
+    // u, ư
+    vietnameseMap["ú"] = "u"; vietnameseMap["ù"] = "u"; vietnameseMap["ủ"] = "u";
+    vietnameseMap["ũ"] = "u"; vietnameseMap["ụ"] = "u";
+    vietnameseMap["ư"] = "u"; vietnameseMap["ứ"] = "u"; vietnameseMap["ừ"] = "u";
+    vietnameseMap["ử"] = "u"; vietnameseMap["ữ"] = "u"; vietnameseMap["ự"] = "u";
+    
+    // y
+    vietnameseMap["ý"] = "y"; vietnameseMap["ỳ"] = "y"; vietnameseMap["ỷ"] = "y";
+    vietnameseMap["ỹ"] = "y"; vietnameseMap["ỵ"] = "y";
+    
+    // d
+    vietnameseMap["đ"] = "d";
+    
+    // Uppercase
+    vietnameseMap["Á"] = "A"; vietnameseMap["À"] = "A"; vietnameseMap["Ả"] = "A";
+    vietnameseMap["Ã"] = "A"; vietnameseMap["Ạ"] = "A";
+    vietnameseMap["Ă"] = "A"; vietnameseMap["Ắ"] = "A"; vietnameseMap["Ằ"] = "A";
+    vietnameseMap["Ẳ"] = "A"; vietnameseMap["Ẵ"] = "A"; vietnameseMap["Ặ"] = "A";
+    vietnameseMap["Â"] = "A"; vietnameseMap["Ấ"] = "A"; vietnameseMap["Ầ"] = "A";
+    vietnameseMap["Ẩ"] = "A"; vietnameseMap["Ẫ"] = "A"; vietnameseMap["Ậ"] = "A";
+    
+    vietnameseMap["É"] = "E"; vietnameseMap["È"] = "E"; vietnameseMap["Ẻ"] = "E";
+    vietnameseMap["Ẽ"] = "E"; vietnameseMap["Ẹ"] = "E";
+    vietnameseMap["Ê"] = "E"; vietnameseMap["Ế"] = "E"; vietnameseMap["Ề"] = "E";
+    vietnameseMap["Ể"] = "E"; vietnameseMap["Ễ"] = "E"; vietnameseMap["Ệ"] = "E";
+    
+    vietnameseMap["Í"] = "I"; vietnameseMap["Ì"] = "I"; vietnameseMap["Ỉ"] = "I";
+    vietnameseMap["Ĩ"] = "I"; vietnameseMap["Ị"] = "I";
+    
+    vietnameseMap["Ó"] = "O"; vietnameseMap["Ò"] = "O"; vietnameseMap["Ỏ"] = "O";
+    vietnameseMap["Õ"] = "O"; vietnameseMap["Ọ"] = "O";
+    vietnameseMap["Ô"] = "O"; vietnameseMap["Ố"] = "O"; vietnameseMap["Ồ"] = "O";
+    vietnameseMap["Ổ"] = "O"; vietnameseMap["Ỗ"] = "O"; vietnameseMap["Ộ"] = "O";
+    vietnameseMap["Ơ"] = "O"; vietnameseMap["Ớ"] = "O"; vietnameseMap["Ờ"] = "O";
+    vietnameseMap["Ở"] = "O"; vietnameseMap["Ỡ"] = "O"; vietnameseMap["Ợ"] = "O";
+    
+    vietnameseMap["Ú"] = "U"; vietnameseMap["Ù"] = "U"; vietnameseMap["Ủ"] = "U";
+    vietnameseMap["Ũ"] = "U"; vietnameseMap["Ụ"] = "U";
+    vietnameseMap["Ư"] = "U"; vietnameseMap["Ứ"] = "U"; vietnameseMap["Ừ"] = "U";
+    vietnameseMap["Ử"] = "U"; vietnameseMap["Ữ"] = "U"; vietnameseMap["Ự"] = "U";
+    
+    vietnameseMap["Ý"] = "Y"; vietnameseMap["Ỳ"] = "Y"; vietnameseMap["Ỷ"] = "Y";
+    vietnameseMap["Ỹ"] = "Y"; vietnameseMap["Ỵ"] = "Y";
+    
+    vietnameseMap["Đ"] = "D";
+    
+    // Replace tất cả ký tự có dấu
+    for (auto it = vietnameseMap.begin(); it != vietnameseMap.end(); ++it) {
+        result.replace(it.key(), it.value());
+    }
+    
+    return result;
+}
+
 ApiClient::ApiClient(const QString &baseUrl, QObject *parent)
     : QObject(parent), base_url(baseUrl), loginReply(0), signupReply(0), logoutReply(0),
       searchReply(0), messageUsersReply(0), messagesReply(0), updateProfileReply(0), getMeReply(0)
@@ -74,16 +162,38 @@ void ApiClient::login(const QString &username, const QString &password)
     connect(loginReply, SIGNAL(finished()), this, SLOT(onLoginFinished()));
 }
 
-void ApiClient::signup(const QString &username, const QString &password)
+void ApiClient::signup(const QString &username, const QString &password, const QString &fullName, const QString &email)
 {
+    logToFile("================================");
+    logToFile("[SIGNUP] Starting signup process");
+    logToFile("[SIGNUP] Username: " + username);
+    logToFile("[SIGNUP] Full Name: " + fullName);
+    logToFile("[SIGNUP] Email: " + email);
+    
+    // Normalize tên và email bỏ dấu tiếng Việt
+    QString normalizedFullName = normalizeVietnamese(fullName);
+    QString normalizedUsername = normalizeVietnamese(username);
+    
     QNetworkRequest request = createRequest("/auth/signup");
     
     QJsonObject json;
-    json["username"] = username;
+    json["username"] = normalizedUsername;
     json["password"] = password;
+    json["fullName"] = normalizedFullName;
+    json["email"] = email.toLower();
     
     QJsonDocument doc(json);
+    logToFile("[SIGNUP] Request body: " + QString::fromUtf8(doc.toJson(QJsonDocument::Compact)));
+    
     signupReply = manager->post(request, doc.toJson());
+    
+    if (!signupReply) {
+        logToFile("[SIGNUP] ERROR: Failed to create network reply!");
+        emit signupFailed("Network error");
+        return;
+    }
+    
+    logToFile("[SIGNUP] Sending request...");
     connect(signupReply, SIGNAL(finished()), this, SLOT(onSignupFinished()));
 }
 
@@ -316,13 +426,110 @@ void ApiClient::onLoginFinished()
 
 void ApiClient::onSignupFinished()
 {
-    if (!signupReply) return;
+    logToFile("================================");
+    logToFile("[SIGNUP-RESPONSE] Received response");
     
-    if (signupReply->error() == QNetworkReply::NoError) {
-        emit signupSuccess();
-    } else {
-        emit signupFailed(signupReply->errorString());
+    if (!signupReply) {
+        logToFile("[SIGNUP-RESPONSE] ERROR: signupReply is NULL!");
+        emit signupFailed("No response from server");
+        return;
     }
+    
+    int httpStatus = signupReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    logToFile("[SIGNUP-RESPONSE] HTTP Status: " + QString::number(httpStatus));
+    logToFile("[SIGNUP-RESPONSE] Error code: " + QString::number(signupReply->error()));
+    
+    QByteArray responseData = signupReply->readAll();
+    logToFile("[SIGNUP-RESPONSE] Response size: " + QString::number(responseData.size()) + " bytes");
+    logToFile("[SIGNUP-RESPONSE] Raw response: " + QString::fromUtf8(responseData));
+    
+    // === Xử lý encoding - normalize ===
+    responseData = responseData.trimmed();
+    
+    // Loại BOM UTF-8 nếu có
+    if (responseData.size() >= 3 &&
+        (unsigned char)responseData[0] == 0xEF &&
+        (unsigned char)responseData[1] == 0xBB &&
+        (unsigned char)responseData[2] == 0xBF) {
+        responseData = responseData.mid(3);
+    }
+    
+    if (responseData.isEmpty()) {
+        logToFile("[SIGNUP-RESPONSE] ERROR: Response is EMPTY!");
+        emit signupFailed("Server returned empty response");
+        signupReply->deleteLater();
+        signupReply = 0;
+        return;
+    }
+    
+    QString decodedStr = QString::fromUtf8(responseData.constData(), responseData.size());
+    
+    // Kiểm tra invalid UTF-8
+    bool hasReplacement = false;
+    for (int i = 0; i < decodedStr.length(); ++i) {
+        if (decodedStr.at(i).unicode() == 0xFFFD) { hasReplacement = true; break; }
+    }
+    if (hasReplacement) {
+        logToFile("[SIGNUP-RESPONSE] Detected invalid UTF-8, trying fromLatin1...");
+        decodedStr = QString::fromLatin1(responseData.constData(), responseData.size());
+    }
+    
+    QByteArray normalizedData = decodedStr.toUtf8();
+    logToFile("[SIGNUP-RESPONSE] Normalized response: " + decodedStr.left(500));
+    
+    // === Parse JSON ===
+    QJsonParseError jsonError;
+    QJsonDocument doc = QJsonDocument::fromJson(normalizedData, &jsonError);
+    
+    if (doc.isNull()) {
+        logToFile("[SIGNUP-RESPONSE] ERROR: Cannot parse JSON: " + jsonError.errorString());
+        emit signupFailed("Invalid JSON response from server");
+        signupReply->deleteLater();
+        signupReply = 0;
+        return;
+    }
+    
+    if (!doc.isObject()) {
+        logToFile("[SIGNUP-RESPONSE] ERROR: Response is not a JSON object!");
+        emit signupFailed("Invalid response from server");
+        signupReply->deleteLater();
+        signupReply = 0;
+        return;
+    }
+    
+    QJsonObject obj = doc.object();
+    logToFile("[SIGNUP-RESPONSE] JSON keys: " + obj.keys().join(", "));
+    
+    // === Kiểm tra status code ===
+    if (httpStatus == 201 || httpStatus == 200) {
+        // Đăng ký thành công
+        logToFile("[SIGNUP-RESPONSE] Signup successful! Status: " + QString::number(httpStatus));
+        
+        QString message = obj["message"].toString("Đăng ký thành công");
+        
+        // Nếu có user info, store lại
+        if (obj.contains("user")) {
+            QJsonObject user = obj["user"].toObject();
+            logToFile("[SIGNUP-RESPONSE] User created: " + user["username"].toString());
+            logToFile("[SIGNUP-RESPONSE] Email: " + user["email"].toString());
+            logToFile("[SIGNUP-RESPONSE] Full Name: " + user["fullName"].toString());
+        }
+        
+        emit signupSuccess();
+    }
+    else {
+        // Đăng ký thất bại
+        logToFile("[SIGNUP-RESPONSE] Signup failed! Status: " + QString::number(httpStatus));
+        
+        QString errorMessage = obj["message"].toString("Đăng ký thất bại");
+        if (obj.contains("error")) {
+            errorMessage = obj["error"].toString(errorMessage);
+        }
+        
+        logToFile("[SIGNUP-RESPONSE] Error message: " + errorMessage);
+        emit signupFailed(errorMessage);
+    }
+    
     signupReply->deleteLater();
     signupReply = 0;
 }
