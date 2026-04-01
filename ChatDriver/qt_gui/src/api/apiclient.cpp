@@ -275,7 +275,11 @@ void ApiClient::onLoginFinished()
     logToFile("[LOGIN-RESPONSE] HTTP Status: " + QString::number(httpStatus));
     logToFile("[LOGIN-RESPONSE] Error code: " + QString::number(loginReply->error()));
 
-    if (loginReply->error() != QNetworkReply::NoError) {
+    QByteArray responseData = loginReply->readAll();
+    logToFile("[LOGIN-RESPONSE] Response size: " + QString::number(responseData.size()) + " bytes");
+
+    // Check network error only if there's no response data
+    if (responseData.isEmpty() && loginReply->error() != QNetworkReply::NoError) {
         QString errorStr = loginReply->errorString();
         logToFile("[LOGIN-RESPONSE] Network Error: " + errorStr);
         emit loginFailed("Lỗi mạng: " + errorStr);
@@ -284,8 +288,13 @@ void ApiClient::onLoginFinished()
         return;
     }
 
-    QByteArray responseData = loginReply->readAll();
-    logToFile("[LOGIN-RESPONSE] Response size: " + QString::number(responseData.size()) + " bytes");
+    if (responseData.isEmpty()) {
+        logToFile("[LOGIN-RESPONSE] ERROR: Response is EMPTY!");
+        emit loginFailed("Máy chủ trả về phản hồi trống");
+        loginReply->deleteLater();
+        loginReply = 0;
+        return;
+    }
 
     // Log raw response (có thể chứa ký tự lạ)
     logToFile("[LOGIN-RESPONSE] Raw response: " + QString::fromLatin1(responseData));
