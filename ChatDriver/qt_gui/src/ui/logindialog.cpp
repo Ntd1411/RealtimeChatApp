@@ -119,12 +119,12 @@ void LoginDialog::onLoginClicked()
     QString p = passwordEdit->text();
     
     if (u.isEmpty() || p.isEmpty()) {
-        statusLabel->setText("Please enter username and password");
+        statusLabel->setText("Vui lòng nhập tên đăng nhập và mật khẩu");
         statusLabel->setStyleSheet("color: red; font-size: 10px;");
         return;
     }
     
-    statusLabel->setText("Logging in...");
+    statusLabel->setText("Đang đăng nhập...");
     statusLabel->setStyleSheet("color: blue; font-size: 10px;");
     loginButton->setEnabled(false);
     registerButton->setEnabled(false);
@@ -146,7 +146,7 @@ void LoginDialog::onLoginSuccess(const QJsonObject &user)
     username = apiClient->getUsername();
     logged_in = true;
     
-    statusLabel->setText("Login successful!");
+    statusLabel->setText("Đăng nhập thành công!");
     statusLabel->setStyleSheet("color: green; font-size: 10px;");
     
     // Close dialog after a short delay
@@ -155,7 +155,7 @@ void LoginDialog::onLoginSuccess(const QJsonObject &user)
 
 void LoginDialog::onLoginFailed(const QString &error)
 {
-    statusLabel->setText("Login failed: " + error);
+    statusLabel->setText("Đăng nhập thất bại: " + error);
     statusLabel->setStyleSheet("color: red; font-size: 10px;");
     loginButton->setEnabled(true);
     registerButton->setEnabled(true);
@@ -163,10 +163,10 @@ void LoginDialog::onLoginFailed(const QString &error)
 
 void LoginDialog::onSignupSuccess()
 {
-    QMessageBox::information(this, "Success", "Account created! You can now login.");
+    QMessageBox::information(this, "Thành công", "Tài khoản đã được tạo! Bạn có thể đăng nhập ngay bây giờ.");
     usernameEdit->clear();
     passwordEdit->clear();
-    statusLabel->setText("Ready");
+    statusLabel->setText("Sẵn sàng");
     statusLabel->setStyleSheet("color: gray; font-size: 10px;");
     loginButton->setEnabled(true);
     registerButton->setEnabled(true);
@@ -174,7 +174,7 @@ void LoginDialog::onSignupSuccess()
 
 void LoginDialog::onSignupFailed(const QString &error)
 {
-    statusLabel->setText("Signup failed: " + error);
+    statusLabel->setText("Đăng ký thất bại: " + error);
     statusLabel->setStyleSheet("color: red; font-size: 10px;");
     loginButton->setEnabled(true);
     registerButton->setEnabled(true);

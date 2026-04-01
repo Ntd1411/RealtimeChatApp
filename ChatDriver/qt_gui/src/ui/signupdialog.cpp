@@ -125,37 +125,37 @@ void SignUpDialog::onSignupClicked()
     
     // Validate input
     if (username.isEmpty()) {
-        statusLabel->setText("Username is required");
+        statusLabel->setText("Tên đăng nhập là bắt buộc");
         statusLabel->setStyleSheet("color: red; font-size: 10px;");
         return;
     }
     
     if (password.isEmpty()) {
-        statusLabel->setText("Password is required");
+        statusLabel->setText("Mật khẩu là bắt buộc");
         statusLabel->setStyleSheet("color: red; font-size: 10px;");
         return;
     }
     
     if (fullName.isEmpty()) {
-        statusLabel->setText("Full name is required");
+        statusLabel->setText("Họ và tên là bắt buộc");
         statusLabel->setStyleSheet("color: red; font-size: 10px;");
         return;
     }
     
     if (email.isEmpty()) {
-        statusLabel->setText("Email is required");
+        statusLabel->setText("Email là bắt buộc");
         statusLabel->setStyleSheet("color: red; font-size: 10px;");
         return;
     }
     
     // Simple email validation
     if (!email.contains("@") || !email.contains(".")) {
-        statusLabel->setText("Invalid email format");
+        statusLabel->setText("Định dạng email không hợp lệ");
         statusLabel->setStyleSheet("color: red; font-size: 10px;");
         return;
     }
     
-    statusLabel->setText("Creating account...");
+    statusLabel->setText("Đang tạo tài khoản...");
     statusLabel->setStyleSheet("color: blue; font-size: 10px;");
     signupButton->setEnabled(false);
     cancelButton->setEnabled(false);
@@ -166,27 +166,27 @@ void SignUpDialog::onSignupClicked()
 
 void SignUpDialog::onSignupSuccess()
 {
-    statusLabel->setText("Sign up successful!");
+    statusLabel->setText("Đăng ký thành công!");
     statusLabel->setStyleSheet("color: green; font-size: 10px;");
     
     signup_successful = true;
     signupButton->setEnabled(true);
     cancelButton->setEnabled(true);
     
-    QMessageBox::information(this, "Success", 
-        "Account created successfully!\nYou can now log in with your credentials.");
+    QMessageBox::information(this, "Thành công", 
+        "Tài khoản đã được tạo thành công!\nBạn có thể đăng nhập ngay bây giờ.");
     
     accept();
 }
 
 void SignUpDialog::onSignupFailed(const QString &error)
 {
-    statusLabel->setText("Sign up failed: " + error);
+    statusLabel->setText("Đăng ký thất bại: " + error);
     statusLabel->setStyleSheet("color: red; font-size: 10px;");
     
     signupButton->setEnabled(true);
     cancelButton->setEnabled(true);
     
-    QMessageBox::warning(this, "Sign Up Failed", 
-        "Failed to create account:\n" + error);
+    QMessageBox::warning(this, "Đăng ký thất bại", 
+        "Không thể tạo tài khoản:\n" + error);
 }

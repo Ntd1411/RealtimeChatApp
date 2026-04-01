@@ -154,7 +154,7 @@ void ApiClient::login(const QString &username, const QString &password)
     
     if (!loginReply) {
         logToFile("[LOGIN] ERROR: Failed to create network reply!");
-        emit loginFailed("Network error");
+        emit loginFailed("Lỗi mạng");
         return;
     }
     
@@ -189,7 +189,7 @@ void ApiClient::signup(const QString &username, const QString &password, const Q
     
     if (!signupReply) {
         logToFile("[SIGNUP] ERROR: Failed to create network reply!");
-        emit signupFailed("Network error");
+        emit signupFailed("Lỗi mạng");
         return;
     }
     
@@ -267,7 +267,7 @@ void ApiClient::onLoginFinished()
 
     if (!loginReply) {
         logToFile("[LOGIN-RESPONSE] ERROR: loginReply is NULL!");
-        emit loginFailed("No response from server");
+        emit loginFailed("Không có phản hồi từ máy chủ");
         return;
     }
 
@@ -278,7 +278,7 @@ void ApiClient::onLoginFinished()
     if (loginReply->error() != QNetworkReply::NoError) {
         QString errorStr = loginReply->errorString();
         logToFile("[LOGIN-RESPONSE] Network Error: " + errorStr);
-        emit loginFailed("Network error: " + errorStr);
+        emit loginFailed("Lỗi mạng: " + errorStr);
         loginReply->deleteLater();
         loginReply = 0;
         return;
@@ -317,7 +317,7 @@ void ApiClient::onLoginFinished()
 
     if (responseData.isEmpty()) {
         logToFile("[LOGIN-RESPONSE] ERROR: Response is EMPTY after trim!");
-        emit loginFailed("Server returned empty response");
+        emit loginFailed("Máy chủ trả về phản hồi trống");
         loginReply->deleteLater();
         loginReply = 0;
         return;
@@ -431,7 +431,7 @@ void ApiClient::onSignupFinished()
     
     if (!signupReply) {
         logToFile("[SIGNUP-RESPONSE] ERROR: signupReply is NULL!");
-        emit signupFailed("No response from server");
+        emit signupFailed("Không có phản hồi từ máy chủ");
         return;
     }
     
@@ -456,7 +456,7 @@ void ApiClient::onSignupFinished()
     
     if (responseData.isEmpty()) {
         logToFile("[SIGNUP-RESPONSE] ERROR: Response is EMPTY!");
-        emit signupFailed("Server returned empty response");
+        emit signupFailed("Máy chủ trả về phản hồi trống");
         signupReply->deleteLater();
         signupReply = 0;
         return;
@@ -534,7 +534,7 @@ void ApiClient::onSignupFinished()
     
     if (doc.isNull()) {
         logToFile("[SIGNUP-RESPONSE] ERROR: Cannot parse JSON: " + jsonError.errorString());
-        emit signupFailed("Invalid JSON response from server");
+        emit signupFailed("Phản hồi JSON không hợp lệ từ máy chủ");
         signupReply->deleteLater();
         signupReply = 0;
         return;
@@ -542,7 +542,7 @@ void ApiClient::onSignupFinished()
     
     if (!doc.isObject()) {
         logToFile("[SIGNUP-RESPONSE] ERROR: Response is not a JSON object!");
-        emit signupFailed("Invalid response from server");
+        emit signupFailed("Phản hồi không hợp lệ từ máy chủ");
         signupReply->deleteLater();
         signupReply = 0;
         return;
