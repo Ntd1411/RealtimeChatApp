@@ -104,7 +104,7 @@ QString normalizeVietnamese(const QString &input)
     vietnameseMap["Đ"] = "D";
     
     // Replace tất cả ký tự có dấu
-    for (auto it = vietnameseMap.begin(); it != vietnameseMap.end(); ++it) {
+    for (QMap<QString, QString>::iterator it = vietnameseMap.begin(); it != vietnameseMap.end(); ++it) {
         result.replace(it.key(), it.value());
     }
     
