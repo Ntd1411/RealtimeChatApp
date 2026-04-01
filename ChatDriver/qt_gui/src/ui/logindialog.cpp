@@ -109,8 +109,6 @@ void LoginDialog::setupConnections()
     
     connect(apiClient, &ApiClient::loginSuccess, this, &LoginDialog::onLoginSuccess);
     connect(apiClient, &ApiClient::loginFailed, this, &LoginDialog::onLoginFailed);
-    connect(apiClient, &ApiClient::signupSuccess, this, &LoginDialog::onSignupSuccess);
-    connect(apiClient, &ApiClient::signupFailed, this, &LoginDialog::onSignupFailed);
 }
 
 void LoginDialog::onLoginClicked()
@@ -137,6 +135,10 @@ void LoginDialog::onRegisterClicked()
     SignUpDialog *signupDialog = new SignUpDialog(apiClient, this);
     signupDialog->exec();
     signupDialog->deleteLater();
+    
+    // Clear input fields after signup dialog closes
+    usernameEdit->clear();
+    passwordEdit->clear();
 }
 
 void LoginDialog::onLoginSuccess(const QJsonObject &user)
@@ -156,25 +158,6 @@ void LoginDialog::onLoginSuccess(const QJsonObject &user)
 void LoginDialog::onLoginFailed(const QString &error)
 {
     statusLabel->setText("Đăng nhập thất bại: " + error);
-    statusLabel->setStyleSheet("color: red; font-size: 10px;");
-    loginButton->setEnabled(true);
-    registerButton->setEnabled(true);
-}
-
-void LoginDialog::onSignupSuccess()
-{
-    QMessageBox::information(this, "Thành công", "Tài khoản đã được tạo! Bạn có thể đăng nhập ngay bây giờ.");
-    usernameEdit->clear();
-    passwordEdit->clear();
-    statusLabel->setText("Sẵn sàng");
-    statusLabel->setStyleSheet("color: gray; font-size: 10px;");
-    loginButton->setEnabled(true);
-    registerButton->setEnabled(true);
-}
-
-void LoginDialog::onSignupFailed(const QString &error)
-{
-    statusLabel->setText("Đăng ký thất bại: " + error);
     statusLabel->setStyleSheet("color: red; font-size: 10px;");
     loginButton->setEnabled(true);
     registerButton->setEnabled(true);

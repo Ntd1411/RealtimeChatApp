@@ -24,8 +24,6 @@ private slots:
     void onRegisterClicked();
     void onLoginSuccess(const QJsonObject &user);
     void onLoginFailed(const QString &error);
-    void onSignupSuccess();
-    void onSignupFailed(const QString &error);
 
 private:
     void setupUI();
