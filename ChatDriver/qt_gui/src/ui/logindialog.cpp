@@ -157,7 +157,7 @@ void LoginDialog::onLoginSuccess(const QJsonObject &user)
 
 void LoginDialog::onLoginFailed(const QString &error)
 {
-    statusLabel->setText("Đăng nhập thất bại: " + error);
+    statusLabel->setText(error);
     statusLabel->setStyleSheet("color: red; font-size: 10px;");
     loginButton->setEnabled(true);
     registerButton->setEnabled(true);
