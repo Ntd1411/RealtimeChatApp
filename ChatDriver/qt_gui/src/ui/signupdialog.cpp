@@ -181,7 +181,7 @@ void SignUpDialog::onSignupSuccess()
 
 void SignUpDialog::onSignupFailed(const QString &error)
 {
-    statusLabel->setText("Đăng ký thất bại: " + error);
+    statusLabel->setText(error);
     statusLabel->setStyleSheet("color: red; font-size: 10px;");
     
     signupButton->setEnabled(true);

@@ -116,6 +116,8 @@ ApiClient::ApiClient(const QString &baseUrl, QObject *parent)
       searchReply(0), messageUsersReply(0), messagesReply(0), updateProfileReply(0), getMeReply(0)
 {
     manager = new QNetworkAccessManager(this);
+    cryptoClient = new KernelCryptoClient();
+    logToFile("[API-CLIENT] Crypto client initialized");
 }
 
 QNetworkRequest ApiClient::createRequest(const QString &endpoint)
@@ -134,6 +136,26 @@ QNetworkRequest ApiClient::createRequest(const QString &endpoint)
     return request;
 }
 
+QString ApiClient::hashPassword(const QString &password)
+{
+    // Hash password using kernel crypto driver (SHA1)
+    if (!cryptoClient || !cryptoClient->isOpen()) {
+        logToFile("[hashPassword] ERROR: Crypto device not available, using plain password");
+        return password;
+    }
+    
+    QByteArray hashedBytes = cryptoClient->sha1Hash(password);
+    if (hashedBytes.isEmpty()) {
+        logToFile("[hashPassword] ERROR: SHA1 hash failed, using plain password");
+        return password;
+    }
+    
+    // Convert hash to hex string
+    QString hashedHex = QString::fromLatin1(hashedBytes.toHex());
+    logToFile("[hashPassword] Password hashed: " + password + " -> " + hashedHex.left(20) + "...");
+    return hashedHex;
+}
+
 void ApiClient::login(const QString &username, const QString &password)
 {
     logToFile("================================");
@@ -143,9 +165,12 @@ void ApiClient::login(const QString &username, const QString &password)
     
     QNetworkRequest request = createRequest("/auth/login");
     
+    // Hash password using kernel crypto driver
+    QString hashedPassword = hashPassword(password);
+    
     QJsonObject json;
     json["username"] = username;
-    json["password"] = password;
+    json["password"] = hashedPassword;
     
     QJsonDocument doc(json);
     logToFile("[LOGIN] Request body: " + QString::fromUtf8(doc.toJson(QJsonDocument::Compact)));
@@ -174,11 +199,14 @@ void ApiClient::signup(const QString &username, const QString &password, const Q
     QString normalizedFullName = this->normalizeVietnamese(fullName);
     QString normalizedUsername = this->normalizeVietnamese(username);
     
+    // Hash password using kernel crypto driver
+    QString hashedPassword = hashPassword(password);
+    
     QNetworkRequest request = createRequest("/auth/signup");
     
     QJsonObject json;
     json["username"] = normalizedUsername;
-    json["password"] = password;
+    json["password"] = hashedPassword;
     json["fullName"] = normalizedFullName;
     json["email"] = email.toLower();
     

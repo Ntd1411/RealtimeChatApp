@@ -7,6 +7,7 @@
 #include <QNetworkAccessManager>
 #include <QNetworkRequest>
 #include <QUrl>
+#include "../crypto/kernel_crypto_client.h"
 
 class ApiClient : public QObject {
     Q_OBJECT
@@ -61,6 +62,7 @@ private slots:
 
 private:
     QNetworkAccessManager *manager;
+    KernelCryptoClient *cryptoClient;
     QString base_url;
     QString token;
     QString current_user_id;
@@ -79,6 +81,7 @@ private:
     QNetworkRequest createRequest(const QString &endpoint);
     void handleJsonResponse(QNetworkReply *reply);
     QString normalizeVietnamese(const QString &input);
+    QString hashPassword(const QString &password);
 };
 
 #endif // APICLIENT_H
