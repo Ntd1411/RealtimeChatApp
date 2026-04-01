@@ -477,7 +477,32 @@ void ApiClient::onSignupFinished()
     QByteArray normalizedData = decodedStr.toUtf8();
     logToFile("[SIGNUP-RESPONSE] Normalized response: " + decodedStr.left(500));
     
-    // === Remove message field (may contain Vietnamese characters that cause JSON parse issues) ===
+    // === Check HTTP status first to determine success/failure ===
+    if (httpStatus >= 400) {
+        // Failure case - extract error message using regex/string parsing
+        logToFile("[SIGNUP-RESPONSE] Signup failed! Status: " + QString::number(httpStatus));
+        
+        // Extract message value using regex-like approach
+        QString errorMessage = "Đăng ký thất bại";
+        int msgIdx = decodedStr.indexOf("\"message\"");
+        if (msgIdx != -1) {
+            int startIdx = decodedStr.indexOf('\"', msgIdx + 10); // Find opening quote after colon
+            if (startIdx != -1) {
+                int endIdx = decodedStr.indexOf('\"', startIdx + 1); // Find closing quote
+                if (endIdx != -1) {
+                    errorMessage = decodedStr.mid(startIdx + 1, endIdx - startIdx - 1);
+                }
+            }
+        }
+        
+        logToFile("[SIGNUP-RESPONSE] Error message: " + errorMessage);
+        emit signupFailed(errorMessage);
+        signupReply->deleteLater();
+        signupReply = 0;
+        return;
+    }
+    
+    // === Success case - remove message field and parse JSON ===
     QString cleanedStr = decodedStr;
     int msgIdx = cleanedStr.indexOf("\"message\"");
     if (msgIdx != -1) {
@@ -526,36 +551,18 @@ void ApiClient::onSignupFinished()
     QJsonObject obj = doc.object();
     logToFile("[SIGNUP-RESPONSE] JSON keys: " + obj.keys().join(", "));
     
-    // === Kiểm tra status code ===
-    if (httpStatus == 201 || httpStatus == 200) {
-        // Đăng ký thành công
-        logToFile("[SIGNUP-RESPONSE] Signup successful! Status: " + QString::number(httpStatus));
-        
-        QString message = obj["message"].toString("Đăng ký thành công");
-        
-        // Nếu có user info, store lại
-        if (obj.contains("user")) {
-            QJsonObject user = obj["user"].toObject();
-            logToFile("[SIGNUP-RESPONSE] User created: " + user["username"].toString());
-            logToFile("[SIGNUP-RESPONSE] Email: " + user["email"].toString());
-            logToFile("[SIGNUP-RESPONSE] Full Name: " + user["fullName"].toString());
-        }
-        
-        emit signupSuccess();
-    }
-    else {
-        // Đăng ký thất bại
-        logToFile("[SIGNUP-RESPONSE] Signup failed! Status: " + QString::number(httpStatus));
-        
-        QString errorMessage = obj["message"].toString("Đăng ký thất bại");
-        if (obj.contains("error")) {
-            errorMessage = obj["error"].toString(errorMessage);
-        }
-        
-        logToFile("[SIGNUP-RESPONSE] Error message: " + errorMessage);
-        emit signupFailed(errorMessage);
+    // === Success case - extract user info ===
+    logToFile("[SIGNUP-RESPONSE] Signup successful! Status: " + QString::number(httpStatus));
+    
+    // Nếu có user info, store lại
+    if (obj.contains("user")) {
+        QJsonObject user = obj["user"].toObject();
+        logToFile("[SIGNUP-RESPONSE] User created: " + user["username"].toString());
+        logToFile("[SIGNUP-RESPONSE] Email: " + user["email"].toString());
+        logToFile("[SIGNUP-RESPONSE] Full Name: " + user["fullName"].toString());
     }
     
+    emit signupSuccess();
     signupReply->deleteLater();
     signupReply = 0;
 }
