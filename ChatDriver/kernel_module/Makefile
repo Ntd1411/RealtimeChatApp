@@ -26,6 +26,7 @@ install: chat_crypto.ko
 	@echo "Loading kernel module..."
 	sudo insmod ./chat_crypto.ko
 	@echo "[✓] Module loaded"
+	sudo chmod 666 /dev/chat_crypto
 
 uninstall:
 	@echo "Unloading kernel module..."

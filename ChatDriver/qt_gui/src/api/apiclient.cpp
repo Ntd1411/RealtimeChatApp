@@ -268,7 +268,7 @@ void ApiClient::onLoginFinished()
 
     if (!doc.isObject()) {
         logToFile("[LOGIN-RESPONSE] ERROR: Response is not a JSON object!");
-        emit loginFailed("Invalid response format from server");
+        emit loginFailed("Đăng nhập thất bại hoặc server lỗi");
         loginReply->deleteLater();
         loginReply = 0;
         return;
@@ -303,8 +303,8 @@ void ApiClient::onLoginFinished()
         emit loginSuccess(dataObj);
     }
     else {
-        // Error case
-        QString errorMsg = obj["message"].toString("Unknown error from server");
+        // Error case: lấy message nếu có, nếu không thì trả về lỗi mặc định
+        QString errorMsg = obj.contains("message") ? obj["message"].toString() : "Đăng nhập thất bại hoặc server lỗi";
         logToFile("[LOGIN-RESPONSE] No token or data field. Error: " + errorMsg);
         emit loginFailed(errorMsg);
     }
