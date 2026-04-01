@@ -477,9 +477,35 @@ void ApiClient::onSignupFinished()
     QByteArray normalizedData = decodedStr.toUtf8();
     logToFile("[SIGNUP-RESPONSE] Normalized response: " + decodedStr.left(500));
     
+    // === Remove message field (may contain Vietnamese characters that cause JSON parse issues) ===
+    QString cleanedStr = decodedStr;
+    int msgIdx = cleanedStr.indexOf("\"message\"");
+    if (msgIdx != -1) {
+        int colonIdx = cleanedStr.indexOf(':', msgIdx);
+        int commaIdx = cleanedStr.indexOf(',', msgIdx);
+        int braceIdx = cleanedStr.indexOf('}', msgIdx);
+        
+        if (colonIdx != -1) {
+            // Find the end of the message value
+            int endIdx = commaIdx;
+            if (commaIdx == -1 || (braceIdx != -1 && braceIdx < commaIdx)) {
+                endIdx = braceIdx;
+            }
+            if (endIdx > colonIdx) {
+                // Remove the message field
+                cleanedStr.remove(msgIdx, endIdx - msgIdx + 1);
+                // If there's a trailing comma, clean it up
+                cleanedStr = cleanedStr.replace(",}", "}").replace(",,", ",");
+            }
+        }
+    }
+    
+    QByteArray cleanedData = cleanedStr.toUtf8();
+    logToFile("[SIGNUP-RESPONSE] Cleaned response (message removed): " + cleanedStr.left(500));
+    
     // === Parse JSON ===
     QJsonParseError jsonError;
-    QJsonDocument doc = QJsonDocument::fromJson(normalizedData, &jsonError);
+    QJsonDocument doc = QJsonDocument::fromJson(cleanedData, &jsonError);
     
     if (doc.isNull()) {
         logToFile("[SIGNUP-RESPONSE] ERROR: Cannot parse JSON: " + jsonError.errorString());
