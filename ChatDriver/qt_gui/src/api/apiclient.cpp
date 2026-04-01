@@ -336,49 +336,46 @@ void ApiClient::onLoginFinished()
     }
     QByteArray normalizedData = decodedStr.toUtf8();
     logToFile("[LOGIN-RESPONSE] Normalized response: " + decodedStr.left(300));
+    
+    // === Check HTTP status first to determine success/failure ===
+    if (httpStatus >= 400) {
+        // Failure case - extract error message using string parsing
+        logToFile("[LOGIN-RESPONSE] Login failed! Status: " + QString::number(httpStatus));
+        
+        // Extract message value
+        QString errorMessage = "Đăng nhập thất bại";
+        int msgIdx = decodedStr.indexOf("\"message\"");
+        if (msgIdx != -1) {
+            int startIdx = decodedStr.indexOf('\"', msgIdx + 10); // Find opening quote after colon
+            if (startIdx != -1) {
+                int endIdx = decodedStr.indexOf('\"', startIdx + 1); // Find closing quote
+                if (endIdx != -1) {
+                    errorMessage = decodedStr.mid(startIdx + 1, endIdx - startIdx - 1);
+                }
+            }
+        }
+        
+        logToFile("[LOGIN-RESPONSE] Error message: " + errorMessage);
+        emit loginFailed(errorMessage);
+        loginReply->deleteLater();
+        loginReply = 0;
+        return;
+    }
+    
+    // === Success case - parse JSON normally ===
     QJsonParseError jsonError;
     QJsonDocument doc = QJsonDocument::fromJson(normalizedData, &jsonError);
     if (doc.isNull()) {
-        logToFile("[LOGIN-RESPONSE] ERROR: Still cannot parse JSON: " + jsonError.errorString() 
-                  + " at offset " + QString::number(jsonError.offset));
-        logToFile("[LOGIN-RESPONSE] First 200 chars: " + decodedStr.left(200));
-
-        // Thử loại bỏ trường message (và ký tự không phải ASCII)
-        QString asciiOnly = decodedStr;
-        for (int i = 0; i < asciiOnly.length(); ++i) {
-            if (asciiOnly.at(i).unicode() > 127) asciiOnly[i] = ' ';
-        }
-        // Loại bỏ trường "message": ... (dùng regex đơn giản)
-        int msgIdx = asciiOnly.indexOf("\"message\"");
-        if (msgIdx != -1) {
-            int commaIdx = asciiOnly.indexOf(',', msgIdx);
-            int braceIdx = asciiOnly.indexOf('}', msgIdx);
-            int endIdx = (commaIdx != -1 && commaIdx < braceIdx) ? commaIdx+1 : braceIdx;
-            if (endIdx > msgIdx) {
-                asciiOnly.remove(msgIdx, endIdx - msgIdx);
-            }
-        }
-        QByteArray asciiData = asciiOnly.toUtf8();
-        logToFile("[LOGIN-RESPONSE] Try parse after removing message/ascii: " + asciiOnly.left(200));
-        QJsonParseError jsonError2;
-        QJsonDocument doc2 = QJsonDocument::fromJson(asciiData, &jsonError2);
-        if (!doc2.isNull()) {
-            logToFile("[LOGIN-RESPONSE] Parse OK after removing message/ascii!");
-            doc = doc2;
-        } else {
-            logToFile("[LOGIN-RESPONSE] Still cannot parse after removing message/ascii: " + jsonError2.errorString());
-            emit loginFailed("Invalid JSON response from server");
-            loginReply->deleteLater();
-            loginReply = 0;
-            return;
-        }
+        logToFile("[LOGIN-RESPONSE] ERROR: Cannot parse JSON: " + jsonError.errorString());
+        emit loginFailed("Phản hồi JSON không hợp lệ từ máy chủ");
+        loginReply->deleteLater();
+        loginReply = 0;
+        return;
     }
-
-    logToFile("[LOGIN-RESPONSE] JSON parsed successfully!");
 
     if (!doc.isObject()) {
         logToFile("[LOGIN-RESPONSE] ERROR: Response is not a JSON object!");
-        emit loginFailed("Đăng nhập thất bại hoặc server lỗi");
+        emit loginFailed("Phản hồi không hợp lệ từ máy chủ");
         loginReply->deleteLater();
         loginReply = 0;
         return;
@@ -412,13 +409,7 @@ void ApiClient::onLoginFinished()
         logToFile("[LOGIN-RESPONSE] Username: " + current_username);
         emit loginSuccess(dataObj);
     }
-    else {
-        // Error case: lấy message nếu có, nếu không thì trả về lỗi mặc định
-        QString errorMsg = obj.contains("message") ? obj["message"].toString() : "Đăng nhập thất bại hoặc server lỗi";
-        logToFile("[LOGIN-RESPONSE] No token or data field. Error: " + errorMsg);
-        emit loginFailed(errorMsg);
-    }
-
+    
     loginReply->deleteLater();
     loginReply = 0;
     logToFile("[LOGIN-RESPONSE] Login processing finished.\n================================");
