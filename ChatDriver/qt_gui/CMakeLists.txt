@@ -26,6 +26,7 @@ find_package(Threads REQUIRED)
 set(SOURCES
     src/main.cpp
     src/ui/logindialog.cpp
+    src/ui/signupdialog.cpp
     src/ui/chatwindow.cpp
     src/api/apiclient.cpp
     src/network/socketclient.cpp
@@ -35,6 +36,7 @@ set(SOURCES
 set(HEADERS
     src/config.h
     src/ui/logindialog.h
+    src/ui/signupdialog.h
     src/ui/chatwindow.h
     src/api/apiclient.h
     src/network/socketclient.h

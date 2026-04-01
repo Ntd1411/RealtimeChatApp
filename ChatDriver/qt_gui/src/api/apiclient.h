@@ -78,8 +78,6 @@ private:
     
     QNetworkRequest createRequest(const QString &endpoint);
     void handleJsonResponse(QNetworkReply *reply);
-    
-    // Helper functions
     QString normalizeVietnamese(const QString &input);
 };
 

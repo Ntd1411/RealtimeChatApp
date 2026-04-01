@@ -24,7 +24,7 @@ void logToFile(const QString &msg) {
 }
 
 // Hàm chuẩn hóa tiếng Việt - bỏ dấu
-QString normalizeVietnamese(const QString &input)
+QString ApiClient::normalizeVietnamese(const QString &input)
 {
     QString result = input;
     
@@ -171,8 +171,8 @@ void ApiClient::signup(const QString &username, const QString &password, const Q
     logToFile("[SIGNUP] Email: " + email);
     
     // Normalize tên và email bỏ dấu tiếng Việt
-    QString normalizedFullName = normalizeVietnamese(fullName);
-    QString normalizedUsername = normalizeVietnamese(username);
+    QString normalizedFullName = this->normalizeVietnamese(fullName);
+    QString normalizedUsername = this->normalizeVietnamese(username);
     
     QNetworkRequest request = createRequest("/auth/signup");
     
