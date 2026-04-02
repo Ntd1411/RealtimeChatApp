@@ -19,7 +19,7 @@ void SocketClient::logToFile(const QString &msg)
 }
 
 SocketClient::SocketClient(const QString &serverUrl, const QString &t, QObject *parent)
-    : QObject(parent), server_url(serverUrl), token(t), message_counter(0), shouldReconnect(true), authenticated(false)
+    : QObject(parent), server_url(serverUrl), token(t), message_counter(0), shouldReconnect(true), authenticated(false), engineioReady(false)
 {
     webSocket = new QWebSocket(QString(), QWebSocketProtocol::VersionLatest, this);
     
@@ -176,17 +176,25 @@ void SocketClient::onConnected()
     logToFile("========================================");
     logToFile("[CONNECTED] TCP socket connected successfully");
     logToFile("WebSocket state: " + QString::number(webSocket->isValid()));
-    logToFile("[CONNECTED] Sending Socket.IO auth frame...");
+    logToFile("[CONNECTED] Waiting for Engine.IO OPEN frame from server...");
     logToFile("========================================");
     
-    // Send auth frame to server
-    sendAuthMessage();
+    engineioReady = false;
+    authenticated = false;
+    
+    // Don't send auth here - wait for OPEN frame from server
+    // Auth will be sent in parseSocketMessage when we get OPEN frame
 }
 
 void SocketClient::sendAuthMessage()
 {
+    if (!engineioReady) {
+        logToFile("[AUTH-FRAME] WARNING: Engine.IO not ready yet, cannot send auth");
+        return;
+    }
+    
     // Build Socket.IO CONNECT packet with auth
-    // Socket.IO packet format: 0 (CONNECT) + namespace + JSON auth
+    // Socket.IO packet format: 0 (CONNECT) + JSON auth
     QJsonObject authObj;
     authObj["token"] = token;
     
@@ -194,17 +202,16 @@ void SocketClient::sendAuthMessage()
     QString authPacket = "0" + doc.toJson(QJsonDocument::Compact);
     
     // Wrap in Engine.IO message frame (type 4)
-    // Engine.IO protocol: 4 = message frame
     QString engineioFrame = "4" + authPacket;
     
     logToFile("[AUTH-FRAME] Socket.IO packet: " + authPacket.left(100));
     logToFile("[AUTH-FRAME] Engine.IO frame: " + engineioFrame.left(100));
-    logToFile("[AUTH-FRAME] Sending auth message...");
+    logToFile("[AUTH-FRAME] Sending Socket.IO CONNECT with auth...");
     
     if (webSocket && webSocket->isValid()) {
         webSocket->sendTextMessage(engineioFrame);
         logToFile("[AUTH-FRAME] Auth frame sent successfully");
-        logToFile("[AUTH-TIMEOUT] Starting 5 second timeout waiting for auth response...");
+        logToFile("[AUTH-TIMEOUT] Starting 5 second timeout waiting for Socket.IO CONNECT response...");
         
         // Start auth timeout timer
         if (authTimeoutTimer) {
@@ -220,10 +227,12 @@ void SocketClient::onAuthTimeoutTimerTimeout()
 {
     logToFile("========================================");
     logToFile("[AUTH-TIMEOUT] FAILED - No auth response from server within 5 seconds");
+    logToFile("[AUTH-TIMEOUT] Engine.IO Ready: " + QString(engineioReady ? "YES" : "NO"));
     logToFile("[AUTH-TIMEOUT] Closing connection and reconnecting...");
     logToFile("========================================");
     
     authenticated = false;
+    engineioReady = false;
     if (webSocket && webSocket->isValid()) {
         webSocket->close();
     }
@@ -235,9 +244,13 @@ void SocketClient::onDisconnected()
     logToFile("[DISCONNECTED] Socket disconnected from server");
     logToFile("WebSocket state: " + QString::number(webSocket->isValid()));
     logToFile("Authenticated: " + QString(authenticated ? "YES" : "NO"));
+    logToFile("Engine.IO Ready: " + QString(engineioReady ? "YES" : "NO"));
     logToFile("[DISCONNECTED] Close code: " + QString::number(webSocket->closeCode()));
     logToFile("[DISCONNECTED] Close reason: " + webSocket->closeReason());
     logToFile("========================================");
+    
+    engineioReady = false;
+    authenticated = false;
     
     // Stop auth timeout timer if running
     if (authTimeoutTimer) {
@@ -309,8 +322,31 @@ void SocketClient::parseSocketMessage(const QString &message)
     
     switch (frameType) {
         case '0': {
-            logToFile("[ENGINE-IO-OPEN] Server sent OPEN frame: " + message.left(100));
-            // This is the Engine.IO OPEN packet, just log it and continue
+            logToFile("[ENGINE-IO-OPEN] Server sent OPEN frame");
+            
+            // Parse OPEN frame - extract sid and other params
+            if (message.length() > 1) {
+                QString jsonStr = message.mid(1);
+                QJsonParseError jsonError;
+                QJsonDocument doc = QJsonDocument::fromJson(jsonStr.toUtf8(), &jsonError);
+                
+                if (doc.isObject()) {
+                    QJsonObject obj = doc.object();
+                    QString sid = obj["sid"].toString();
+                    int pingInterval = obj["pingInterval"].toInt();
+                    
+                    logToFile("[ENGINE-IO-OPEN] Session ID: " + sid);
+                    logToFile("[ENGINE-IO-OPEN] Ping interval: " + QString::number(pingInterval) + "ms");
+                    
+                    engineioReady = true;
+                    logToFile("[ENGINE-IO-OPEN] Engine.IO ready - NOW sending Socket.IO CONNECT auth...");
+                    
+                    // NOW send Socket.IO CONNECT auth after Engine.IO is ready
+                    sendAuthMessage();
+                } else {
+                    logToFile("[ENGINE-IO-OPEN] ERROR: Cannot parse OPEN frame JSON");
+                }
+            }
             break;
         }
         case '1': {

@@ -56,6 +56,7 @@ private:
     QTimer *authTimeoutTimer;
     bool shouldReconnect;
     bool authenticated;
+    bool engineioReady;
 };
 
 #endif // SOCKETCLIENT_H
