@@ -209,65 +209,111 @@ void SocketClient::parseSocketMessage(const QString &message)
         return;
     }
     
-    logToFile("Parsing message, first char: " + QString::number((int)message[0].toLatin1()));
+    logToFile("===== SOCKET MESSAGE START =====");
+    logToFile("Message length: " + QString::number(message.length()));
+    logToFile("First 200 chars: " + message.left(200));
+    logToFile("First char code: " + QString::number((int)message[0].toLatin1()));
     
     // Socket.IO protocol: first char is frame type
-    // 4 = emit, 2 = connect, 0 = disconnect, etc.
-    if (message[0] == '4') {
-        // Emit message - parse JSON after "4"
-        QString jsonStr = message.mid(1);
-        QJsonParseError jsonError;
-        QJsonDocument doc = QJsonDocument::fromJson(jsonStr.toUtf8(), &jsonError);
-        
-        if (doc.isArray()) {
-            QJsonArray arr = doc.array();
-            if (arr.size() >= 2) {
-                QString eventName = arr[0].toString();
-                QJsonObject data = arr[1].toObject();
-                
-                logToFile("Event: " + eventName);
-                
-                if (eventName == "receive-message") {
-                    QString senderId = data["senderId"].toString();
-                    QString content = data["content"].toString();
-                    logToFile("Message from " + senderId + ": " + content.left(100));
-                    emit messageReceived(data);
-                } else if (eventName == "seen-message") {
-                    QString viewerId = data["viewerId"].toString();
-                    logToFile("Message seen by " + viewerId);
-                    emit messagesSeen(viewerId);
-                } else if (eventName == "typing-start") {
-                    QString senderId = data["senderId"].toString();
-                    logToFile("Typing started by " + senderId);
-                    emit typingStarted(senderId, data["senderName"].toString());
-                } else if (eventName == "typing-stop") {
-                    QString senderId = data["senderId"].toString();
-                    logToFile("Typing stopped by " + senderId);
-                    emit typingStopped(senderId);
-                } else if (eventName == "noti-online") {
-                    QString userId = data["id"].toString();
-                    logToFile("User online: " + userId);
-                    emit onlineStatusChanged(userId, true);
-                } else if (eventName == "noti-offline") {
-                    QString userId = data["id"].toString();
-                    logToFile("User offline: " + userId);
-                    emit onlineStatusChanged(userId, false);
-                } else {
-                    logToFile("Unknown event: " + eventName);
-                }
-            } else {
-                logToFile("WARNING: Array size < 2");
-            }
-        } else {
-            logToFile("ERROR: JSON is not array or parse failed: " + jsonError.errorString());
+    // 0 = disconnect, 1 = connect, 2 = disconnect, 3 = ping, 4 = pong, 5 = message, 6 = upgrade, 7 = noop
+    // For Socket.IO namespace: 0 = disconnect, 1 = connect, 2 = disconnect, 3 = error, 4 = ack, 5 = error
+    
+    char frameType = message[0].toLatin1();
+    
+    switch (frameType) {
+        case '0': {
+            logToFile("[FRAME-0] Disconnect: " + message.mid(1, 50));
+            break;
         }
-    } else if (message[0] == '2') {
-        // Connect event
-        logToFile("Socket.IO connect event received");
-    } else if (message[0] == '0') {
-        // Disconnect event
-        logToFile("Socket.IO disconnect event received");
-    } else {
-        logToFile("Unknown frame type: " + QString::number((int)message[0].toLatin1()));
+        case '1': {
+            logToFile("[FRAME-1] Engine.IO Connect: " + message.mid(1, 50));
+            break;
+        }
+        case '2': {
+            logToFile("[FRAME-2] Ping");
+            // Respond with pong (3)
+            if (webSocket && webSocket->isValid()) {
+                webSocket->sendTextMessage("3");
+                logToFile("Sent pong response");
+            }
+            break;
+        }
+        case '3': {
+            logToFile("[FRAME-3] Pong");
+            break;
+        }
+        case '4': {
+            logToFile("[FRAME-4] Emit message (Socket.IO event)");
+            // Emit message - parse JSON after "4"
+            QString jsonStr = message.mid(1);
+            logToFile("JSON to parse: " + jsonStr.left(200));
+            
+            QJsonParseError jsonError;
+            QJsonDocument doc = QJsonDocument::fromJson(jsonStr.toUtf8(), &jsonError);
+            
+            if (doc.isNull()) {
+                logToFile("ERROR: JSON parse failed: " + jsonError.errorString());
+                break;
+            }
+            
+            if (!doc.isArray()) {
+                logToFile("ERROR: JSON is not array");
+                break;
+            }
+            
+            QJsonArray arr = doc.array();
+            if (arr.size() < 2) {
+                logToFile("WARNING: Array size < 2: " + QString::number(arr.size()));
+                break;
+            }
+            
+            QString eventName = arr[0].toString();
+            QJsonObject data = arr[1].toObject();
+            
+            logToFile("Event: " + eventName);
+            
+            if (eventName == "receive-message") {
+                QString senderId = data["senderId"].toString();
+                QString content = data["content"].toString();
+                logToFile("Message from " + senderId + ": " + content.left(100));
+                emit messageReceived(data);
+            } else if (eventName == "seen-message") {
+                QString viewerId = data["viewerId"].toString();
+                logToFile("Message seen by " + viewerId);
+                emit messagesSeen(viewerId);
+            } else if (eventName == "typing-start") {
+                QString senderId = data["senderId"].toString();
+                logToFile("Typing started by " + senderId);
+                emit typingStarted(senderId, data["senderName"].toString());
+            } else if (eventName == "typing-stop") {
+                QString senderId = data["senderId"].toString();
+                logToFile("Typing stopped by " + senderId);
+                emit typingStopped(senderId);
+            } else if (eventName == "noti-online") {
+                QString userId = data["id"].toString();
+                logToFile("User online: " + userId);
+                emit onlineStatusChanged(userId, true);
+            } else if (eventName == "noti-offline") {
+                QString userId = data["id"].toString();
+                logToFile("User offline: " + userId);
+                emit onlineStatusChanged(userId, false);
+            } else {
+                logToFile("Unknown event: " + eventName);
+            }
+            break;
+        }
+        case '5': {
+            logToFile("[FRAME-5] Ack");
+            break;
+        }
+        case '6': {
+            logToFile("[FRAME-6] Error: " + message.mid(1, 100));
+            break;
+        }
+        default: {
+            logToFile("[UNKNOWN FRAME] Type: " + QString::number((int)frameType) + " Content: " + message.left(100));
+        }
     }
+    
+    logToFile("===== SOCKET MESSAGE END =====");
 }
