@@ -315,35 +315,16 @@ void ApiClient::saveMessage(const QString &receiverId, const QString &content)
     
     QNetworkRequest request = createRequest("/messages");
     logToFile("[SAVE-MESSAGE] URL: " + base_url + "/messages");
-    logToFile("[SAVE-MESSAGE] Payload: " + QString::fromUtf8(jsonData));
     
     QNetworkReply *reply = manager->post(request, jsonData);
     
-    if (!reply) {
-        logToFile("[SAVE-MESSAGE] ERROR: Failed to create network reply!");
-        emit error("Không thể gửi tin nhắn");
-        return;
-    }
-    
-    // Create one-shot connection to handle response
-    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
-        logToFile("[SAVE-MESSAGE-RESPONSE] Response received");
-        
-        int httpStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-        QByteArray responseData = reply->readAll();
-        
-        logToFile("[SAVE-MESSAGE-RESPONSE] HTTP Status: " + QString::number(httpStatus));
-        logToFile("[SAVE-MESSAGE-RESPONSE] Response: " + QString::fromUtf8(responseData).left(200));
-        
+    if (reply) {
+        logToFile("[SAVE-MESSAGE] Message sent successfully");
         reply->deleteLater();
-        
-        if (httpStatus >= 400) {
-            logToFile("[SAVE-MESSAGE-RESPONSE] ERROR: Failed to save message");
-            emit error("Không thể lưu tin nhắn");
-        } else {
-            logToFile("[SAVE-MESSAGE-RESPONSE] Message saved successfully");
-        }
-    });
+    } else {
+        logToFile("[SAVE-MESSAGE] ERROR: Failed to send message");
+        emit error("Không thể gửi tin nhắn");
+    }
 }
 
 void ApiClient::updateProfile(const QJsonObject &data)
