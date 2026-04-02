@@ -715,10 +715,33 @@ void ApiClient::onSearchFinished()
     
     logToFile("[SEARCH-RESPONSE] Raw response: " + QString::fromLatin1(responseData));
     
-    // === Remove message field to avoid UTF-8 encoding issues ===
-    QString responseStr = QString::fromLatin1(responseData.constData(), responseData.size());
+    // === Extract message field value from raw response before removing ===
+    QString rawResponseStr = QString::fromLatin1(responseData.constData(), responseData.size());
+    QString messageValue;
     
-    int msgIdx = responseStr.indexOf("\"message\"");
+    int msgIdx = rawResponseStr.indexOf("\"message\":");
+    if (msgIdx != -1) {
+        int colonIdx = msgIdx + 10;  // Skip past "message":
+        int quoteIdx = rawResponseStr.indexOf('"', colonIdx);
+        if (quoteIdx != -1) {
+            int endQuoteIdx = quoteIdx + 1;
+            bool escaped = false;
+            while (endQuoteIdx < rawResponseStr.length()) {
+                if (rawResponseStr[endQuoteIdx] == '"' && !escaped) {
+                    break;
+                }
+                escaped = (rawResponseStr[endQuoteIdx] == '\\' && !escaped);
+                endQuoteIdx++;
+            }
+            messageValue = rawResponseStr.mid(quoteIdx + 1, endQuoteIdx - quoteIdx - 1);
+            logToFile("[SEARCH-RESPONSE] Extracted message: " + messageValue);
+        }
+    }
+    
+    // === Remove message field to avoid UTF-8 encoding issues ===
+    QString responseStr = rawResponseStr;
+    
+    msgIdx = responseStr.indexOf("\"message\"");
     if (msgIdx != -1) {
         int colonIdx = responseStr.indexOf(':', msgIdx);
         int commaIdx = responseStr.indexOf(',', msgIdx);
@@ -828,14 +851,41 @@ void ApiClient::onMessageUsersFinished()
     
     logToFile("[GET-MESSAGE-USERS-RESPONSE] Raw response size: " + QString::number(responseData.size()));
     
-    // === Remove lastMessage field to avoid UTF-8 encoding issues ===
-    QString responseStr = QString::fromLatin1(responseData.constData(), responseData.size());
+    // === Extract lastMessage objects from raw response before cleaning ===
+    QString rawResponseStr = QString::fromLatin1(responseData.constData(), responseData.size());
+    QStringList lastMessages;
+    
+    int pos = 0;
+    while ((pos = rawResponseStr.indexOf("\"lastMessage\":", pos)) != -1) {
+        int openBrace = rawResponseStr.indexOf('{', pos);
+        if (openBrace == -1) break;
+        
+        int closeBrace = openBrace;
+        int braceCount = 1;
+        for (int i = openBrace + 1; i < rawResponseStr.length() && braceCount > 0; ++i) {
+            if (rawResponseStr[i] == '{') braceCount++;
+            if (rawResponseStr[i] == '}') braceCount--;
+            if (braceCount == 0) {
+                closeBrace = i;
+                break;
+            }
+        }
+        
+        if (closeBrace > openBrace) {
+            QString lastMsg = rawResponseStr.mid(openBrace, closeBrace - openBrace + 1);
+            lastMessages.append(lastMsg);
+            logToFile("[GET-MESSAGE-USERS-RESPONSE] Extracted lastMessage: " + lastMsg.left(100));
+        }
+        pos = closeBrace;
+    }
+    
+    // === Remove lastMessage field to parse JSON ===
+    QString responseStr = rawResponseStr;
     
     int lastMsgIdx = responseStr.indexOf("\"lastMessage\"");
     if (lastMsgIdx != -1) {
-        int colonIdx = responseStr.indexOf(':', lastMsgIdx);
         int openBrace = responseStr.indexOf('{', lastMsgIdx);
-        int closeBrace = openBrace;
+        int closeBrace = lastMsgIdx;
         int braceCount = 0;
         
         if (openBrace != -1) {
@@ -851,7 +901,7 @@ void ApiClient::onMessageUsersFinished()
             }
         }
         
-        if (closeBrace > colonIdx) {
+        if (closeBrace > openBrace) {
             int endIdx = closeBrace + 1;
             if (endIdx < responseStr.length() && responseStr[endIdx] == ',') {
                 endIdx++;
@@ -888,7 +938,7 @@ void ApiClient::onMessageUsersFinished()
     QJsonObject obj = doc.object();
     logToFile("[GET-MESSAGE-USERS-RESPONSE] JSON keys: " + obj.keys().join(", "));
     
-    // === Extract users array ===
+    // === Extract users array and restore lastMessage ===
     if (httpStatus >= 400) {
         QString errorMessage = "Lỗi lấy danh sách người dùng";
         logToFile("[GET-MESSAGE-USERS-RESPONSE] Error: " + errorMessage);
@@ -898,6 +948,17 @@ void ApiClient::onMessageUsersFinished()
         if (obj.contains("users") && obj["users"].isArray()) {
             users = obj["users"].toArray();
             logToFile("[GET-MESSAGE-USERS-RESPONSE] Found " + QString::number(users.size()) + " users");
+            
+            // Restore lastMessage field from extracted values
+            for (int i = 0; i < users.size() && i < lastMessages.size(); ++i) {
+                QJsonObject user = users[i].toObject();
+                QJsonDocument msgDoc = QJsonDocument::fromJson(lastMessages[i].toUtf8());
+                if (msgDoc.isObject()) {
+                    user["lastMessage"] = msgDoc.object();
+                    users[i] = user;
+                    logToFile("[GET-MESSAGE-USERS-RESPONSE] Restored lastMessage for user " + QString::number(i));
+                }
+            }
         } else {
             logToFile("[GET-MESSAGE-USERS-RESPONSE] WARNING: 'users' field not found");
         }
@@ -954,10 +1015,36 @@ void ApiClient::onMessagesFinished()
     
     logToFile("[GET-MESSAGES-RESPONSE] Raw response size: " + QString::number(responseData.size()));
     
-    // === Remove content field to avoid UTF-8 encoding issues ===
-    QString responseStr = QString::fromLatin1(responseData.constData(), responseData.size());
+    // === Extract content values from raw response before cleaning ===
+    QString rawResponseStr = QString::fromLatin1(responseData.constData(), responseData.size());
+    QStringList contentValues;
     
-    // Remove all "content" fields which contain Vietnamese/non-ASCII messages
+    int pos = 0;
+    while ((pos = rawResponseStr.indexOf("\"content\":", pos)) != -1) {
+        // Find the opening quote of content value
+        int quoteStart = rawResponseStr.indexOf('"', pos + 11);
+        if (quoteStart == -1) break;
+        
+        // Find the closing quote (handle escaped quotes)
+        int quoteEnd = quoteStart + 1;
+        while (quoteEnd < rawResponseStr.length()) {
+            if (rawResponseStr[quoteEnd] == '"' && (quoteEnd == 0 || rawResponseStr[quoteEnd-1] != '\\')) {
+                break;
+            }
+            quoteEnd++;
+        }
+        
+        if (quoteEnd < rawResponseStr.length()) {
+            QString content = rawResponseStr.mid(quoteStart + 1, quoteEnd - quoteStart - 1);
+            contentValues.append(content);
+            logToFile("[GET-MESSAGES-RESPONSE] Extracted content: " + content.left(100));
+        }
+        pos = quoteEnd;
+    }
+    
+    // === Remove content field to parse JSON ===
+    QString responseStr = rawResponseStr;
+    
     while (true) {
         int contentIdx = responseStr.indexOf("\"content\"");
         if (contentIdx == -1) break;
@@ -1008,7 +1095,7 @@ void ApiClient::onMessagesFinished()
     QJsonObject obj = doc.object();
     logToFile("[GET-MESSAGES-RESPONSE] JSON keys: " + obj.keys().join(", "));
     
-    // === Extract messages array ===
+    // === Extract messages array and restore content ===
     if (httpStatus >= 400) {
         QString errorMessage = "Lỗi lấy tin nhắn";
         logToFile("[GET-MESSAGES-RESPONSE] Error: " + errorMessage);
@@ -1018,6 +1105,14 @@ void ApiClient::onMessagesFinished()
         if (obj.contains("messages") && obj["messages"].isArray()) {
             messages = obj["messages"].toArray();
             logToFile("[GET-MESSAGES-RESPONSE] Found " + QString::number(messages.size()) + " messages");
+            
+            // Restore content field from extracted values
+            for (int i = 0; i < messages.size() && i < contentValues.size(); ++i) {
+                QJsonObject msg = messages[i].toObject();
+                msg["content"] = contentValues[i];
+                messages[i] = msg;
+                logToFile("[GET-MESSAGES-RESPONSE] Restored content for message " + QString::number(i));
+            }
         } else {
             logToFile("[GET-MESSAGES-RESPONSE] WARNING: 'messages' field not found");
         }
