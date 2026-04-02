@@ -115,7 +115,7 @@ void SocketClient::sendMessage(const QString &receiverId, const QString &content
     QString jsonData = doc.toJson(QJsonDocument::Compact);
     
     // Format: Engine.IO frame 4 + Socket.IO EVENT type 2 + JSON array
-    QString message = "4" + "2" + jsonData;
+    QString message = "42" + jsonData;
     
     logToFile("[SEND] Frame: " + message.left(100) + "...");
     
