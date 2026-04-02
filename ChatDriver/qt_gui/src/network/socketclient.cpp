@@ -95,16 +95,16 @@ bool SocketClient::isConnected() const
 
 void SocketClient::sendMessage(const QString &receiverId, const QString &content)
 {
-    logToFile("Sending message to " + receiverId + ": " + content.left(100));
+    logToFile("[SEND] Sending to " + receiverId + ": " + content.left(50));
     
     if (!authenticated) {
-        logToFile("ERROR: Not authenticated, cannot send message");
-        emit error("Chưa kết nối được server");
+        logToFile("[SEND] ERROR: Not authenticated");
+        emit error("Chưa xác thực được");
         return;
     }
     
     QJsonObject payload;
-    payload["content"] = content;  // Sẽ được encode thành UTF-8 tự động
+    payload["content"] = content;
     payload["receiverId"] = receiverId;
     
     QJsonArray arr;
@@ -112,13 +112,18 @@ void SocketClient::sendMessage(const QString &receiverId, const QString &content
     arr.append(payload);
     
     QJsonDocument doc(arr);
-    QString message = "4" + doc.toJson(QJsonDocument::Compact); // "4" = Engine.IO MESSAGE frame
+    QString jsonData = doc.toJson(QJsonDocument::Compact);
+    
+    // Format: Engine.IO frame 4 + Socket.IO EVENT type 2 + JSON array
+    QString message = "4" + "2" + jsonData;
+    
+    logToFile("[SEND] Frame: " + message.left(100) + "...");
     
     if (webSocket && webSocket->isValid()) {
         webSocket->sendTextMessage(message);
-        logToFile("Message sent successfully");
+        logToFile("[SEND] Sent OK");
     } else {
-        logToFile("ERROR: Socket not connected, cannot send message");
+        logToFile("[SEND] ERROR: Socket not valid");
         emit error("Socket không kết nối");
     }
 }
@@ -264,12 +269,13 @@ void SocketClient::parseSocketMessage(const QString &message)
                         
                         if (doc.isArray()) {
                             QJsonArray arr = doc.array();
-                            if (arr.size() >= 2) {
+                            if (arr.size() >= 1) {
                                 QString eventName = arr[0].toString();
+                                logToFile("[EVENT] Event name: " + eventName);
                                 
-                                if (eventName == "receive-message") {
+                                if (eventName == "receive-message" && arr.size() >= 2) {
                                     QJsonObject data = arr[1].toObject();
-                                    logToFile("[EVENT] Message received");
+                                    logToFile("[EVENT] Message received - content: " + data["content"].toString());
                                     emit messageReceived(data);
                                 }
                             }
