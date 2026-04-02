@@ -5,9 +5,21 @@
 #include <QJsonArray>
 #include <QDebug>
 #include <QTimer>
+#include <QFile>
+#include <QTextStream>
+
+void SocketClient::logToFile(const QString &msg)
+{
+    QFile file("chatclient.log");
+    if (file.open(QIODevice::Append | QIODevice::Text)) {
+        QTextStream out(&file);
+        out << "[SOCKET] " << msg << "\n";
+        file.close();
+    }
+}
 
 SocketClient::SocketClient(const QString &serverUrl, const QString &t, QObject *parent)
-    : QObject(parent), server_url(serverUrl), token(t), message_counter(0)
+    : QObject(parent), server_url(serverUrl), token(t), message_counter(0), shouldReconnect(true)
 {
     webSocket = new QWebSocket(QString(), QWebSocketProtocol::VersionLatest, this);
     
@@ -17,17 +29,30 @@ SocketClient::SocketClient(const QString &serverUrl, const QString &t, QObject *
                      this, SLOT(onTextMessageReceived(QString)));
     QObject::connect(webSocket, SIGNAL(error(QAbstractSocket::SocketError)), 
                      this, SLOT(onError(QAbstractSocket::SocketError)));
+    
+    // Setup reconnect timer
+    reconnectTimer = new QTimer(this);
+    QObject::connect(reconnectTimer, SIGNAL(timeout()), this, SLOT(onReconnectTimerTimeout()));
+    
+    logToFile("SocketClient initialized with server: " + serverUrl);
 }
 
 SocketClient::~SocketClient()
 {
+    shouldReconnect = false;
+    if (reconnectTimer) {
+        reconnectTimer->stop();
+    }
     if (webSocket && webSocket->isValid()) {
         webSocket->close();
     }
+    logToFile("SocketClient destroyed");
 }
 
 void SocketClient::connect()
 {
+    logToFile("Attempting to connect...");
+    
     // Convert http:// to ws:// and https:// to wss://
     QString wsUrl = server_url;
     if (wsUrl.startsWith("https://")) {
@@ -40,12 +65,17 @@ void SocketClient::connect()
     if (!wsUrl.endsWith("/")) wsUrl += "/";
     wsUrl += "socket.io/?transport=websocket&token=" + token;
     
-    qDebug() << "Connecting to:" << wsUrl;
+    logToFile("Socket URL: " + wsUrl);
     webSocket->open(QUrl(wsUrl));
 }
 
 void SocketClient::disconnect()
 {
+    logToFile("Disconnecting...");
+    shouldReconnect = false;
+    if (reconnectTimer) {
+        reconnectTimer->stop();
+    }
     if (webSocket && webSocket->isValid()) {
         webSocket->close();
     }
@@ -58,6 +88,8 @@ bool SocketClient::isConnected() const
 
 void SocketClient::sendMessage(const QString &receiverId, const QString &content)
 {
+    logToFile("Sending message to " + receiverId + ": " + content.left(100));
+    
     QJsonObject payload;
     payload["content"] = content;
     payload["receiverId"] = receiverId;
@@ -72,7 +104,10 @@ void SocketClient::sendMessage(const QString &receiverId, const QString &content
     
     if (webSocket && webSocket->isValid()) {
         webSocket->sendTextMessage(message);
-        qDebug() << "Message sent to:" << receiverId;
+        logToFile("Message sent successfully");
+    } else {
+        logToFile("ERROR: Socket not connected, cannot send message");
+        emit error("Socket không kết nối");
     }
 }
 
@@ -129,38 +164,60 @@ void SocketClient::notifyTypingStop(const QString &receiverId)
 
 void SocketClient::onConnected()
 {
-    qDebug() << "Socket connected";
+    logToFile("Socket connected successfully");
+    if (reconnectTimer) {
+        reconnectTimer->stop();
+    }
     emit connected();
 }
 
 void SocketClient::onDisconnected()
 {
-    qDebug() << "Socket disconnected";
+    logToFile("Socket disconnected");
     emit disconnected();
+    
+    // Auto-reconnect after 5 seconds
+    if (shouldReconnect && reconnectTimer) {
+        logToFile("Scheduling reconnect in 5 seconds...");
+        reconnectTimer->start(5000);
+    }
 }
 
 void SocketClient::onTextMessageReceived(const QString &message)
 {
-    qDebug() << "Received:" << message;
+    logToFile("Received message: " + message.left(200));
     parseSocketMessage(message);
 }
 
 void SocketClient::onError(QAbstractSocket::SocketError error)
 {
-    qDebug() << "Socket error:" << error;
-    emit this->error(webSocket->errorString());
+    QString errorMsg = webSocket->errorString();
+    logToFile("Socket error: " + errorMsg);
+    emit this->error(errorMsg);
+}
+
+void SocketClient::onReconnectTimerTimeout()
+{
+    logToFile("Attempting to reconnect...");
+    connect();
 }
 
 void SocketClient::parseSocketMessage(const QString &message)
 {
-    if (message.isEmpty()) return;
+    if (message.isEmpty()) {
+        logToFile("Empty message received");
+        return;
+    }
+    
+    logToFile("Parsing message, first char: " + QString::number((int)message[0].toLatin1()));
     
     // Socket.IO protocol: first char is frame type
     // 4 = emit, 2 = connect, 0 = disconnect, etc.
     if (message[0] == '4') {
         // Emit message - parse JSON after "4"
         QString jsonStr = message.mid(1);
-        QJsonDocument doc = QJsonDocument::fromJson(jsonStr.toUtf8());
+        QJsonParseError jsonError;
+        QJsonDocument doc = QJsonDocument::fromJson(jsonStr.toUtf8(), &jsonError);
         
         if (doc.isArray()) {
             QJsonArray arr = doc.array();
@@ -168,26 +225,49 @@ void SocketClient::parseSocketMessage(const QString &message)
                 QString eventName = arr[0].toString();
                 QJsonObject data = arr[1].toObject();
                 
+                logToFile("Event: " + eventName);
+                
                 if (eventName == "receive-message") {
+                    QString senderId = data["senderId"].toString();
+                    QString content = data["content"].toString();
+                    logToFile("Message from " + senderId + ": " + content.left(100));
                     emit messageReceived(data);
                 } else if (eventName == "seen-message") {
-                    emit messagesSeen(data["viewerId"].toString());
+                    QString viewerId = data["viewerId"].toString();
+                    logToFile("Message seen by " + viewerId);
+                    emit messagesSeen(viewerId);
                 } else if (eventName == "typing-start") {
-                    emit typingStarted(
-                        data["senderId"].toString(),
-                        data["senderName"].toString()
-                    );
+                    QString senderId = data["senderId"].toString();
+                    logToFile("Typing started by " + senderId);
+                    emit typingStarted(senderId, data["senderName"].toString());
                 } else if (eventName == "typing-stop") {
-                    emit typingStopped(data["senderId"].toString());
+                    QString senderId = data["senderId"].toString();
+                    logToFile("Typing stopped by " + senderId);
+                    emit typingStopped(senderId);
                 } else if (eventName == "noti-online") {
-                    emit onlineStatusChanged(data["id"].toString(), true);
+                    QString userId = data["id"].toString();
+                    logToFile("User online: " + userId);
+                    emit onlineStatusChanged(userId, true);
                 } else if (eventName == "noti-offline") {
-                    emit onlineStatusChanged(data["id"].toString(), false);
+                    QString userId = data["id"].toString();
+                    logToFile("User offline: " + userId);
+                    emit onlineStatusChanged(userId, false);
+                } else {
+                    logToFile("Unknown event: " + eventName);
                 }
+            } else {
+                logToFile("WARNING: Array size < 2");
             }
+        } else {
+            logToFile("ERROR: JSON is not array or parse failed: " + jsonError.errorString());
         }
     } else if (message[0] == '2') {
         // Connect event
-        qDebug() << "Socket connected - ready to use";
+        logToFile("Socket.IO connect event received");
+    } else if (message[0] == '0') {
+        // Disconnect event
+        logToFile("Socket.IO disconnect event received");
+    } else {
+        logToFile("Unknown frame type: " + QString::number((int)message[0].toLatin1()));
     }
 }

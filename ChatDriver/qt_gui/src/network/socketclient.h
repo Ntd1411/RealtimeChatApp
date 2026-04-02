@@ -6,6 +6,7 @@
 #include <QWebSocket>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QTimer>
 
 class SocketClient : public QObject {
     Q_OBJECT
@@ -39,14 +40,18 @@ private slots:
     void onDisconnected();
     void onTextMessageReceived(const QString &message);
     void onError(QAbstractSocket::SocketError error);
+    void onReconnectTimerTimeout();
 
 private:
     void parseSocketMessage(const QString &message);
+    void logToFile(const QString &msg);
     
     QWebSocket *webSocket;
     QString server_url;
     QString token;
     long long message_counter;
+    QTimer *reconnectTimer;
+    bool shouldReconnect;
 };
 
 #endif // SOCKETCLIENT_H

@@ -332,14 +332,16 @@ void ChatWindow::onMessagesReceived(const QJsonArray &messages)
 
 void ChatWindow::onSocketConnected()
 {
+    qDebug() << "[SOCKET] Connected successfully";
     statusLabel->setText("Connected");
     statusLabel->setStyleSheet("font-size: 10px; color: green; font-weight: bold;");
 }
 
 void ChatWindow::onSocketDisconnected()
 {
-    statusLabel->setText("Disconnected");
-    statusLabel->setStyleSheet("font-size: 10px; color: red; font-weight: bold;");
+    qDebug() << "[SOCKET] Disconnected from server";
+    statusLabel->setText("Disconnected - Reconnecting...");
+    statusLabel->setStyleSheet("font-size: 10px; color: orange; font-weight: bold;");
 }
 
 void ChatWindow::onSocketMessageReceived(const QJsonObject &message)
@@ -347,15 +349,19 @@ void ChatWindow::onSocketMessageReceived(const QJsonObject &message)
     QString senderId = message["senderId"].toString();
     QString content = message["content"].toString();
     
+    qDebug() << "[SOCKET-MESSAGE] From:" << senderId << "Content:" << content;
+    
     // Only display if it's from current chat
     if (senderId == current_chat_user_id) {
         displayMessage(current_chat_username, content, false);
         socketClient->markMessageSeen(senderId);
+        statusLabel->setText("New message received");
     }
 }
 
 void ChatWindow::onSocketTypingStart(const QString &senderId, const QString &senderName)
 {
+    qDebug() << "[SOCKET-TYPING] Started by:" << senderName;
     if (senderId == current_chat_user_id) {
         typingLabel->setText(senderName + " is typing...");
         typingLabel->setStyleSheet("font-size: 10px; color: #2196F3; font-style: italic;");
@@ -364,6 +370,7 @@ void ChatWindow::onSocketTypingStart(const QString &senderId, const QString &sen
 
 void ChatWindow::onSocketTypingStopped(const QString &senderId)
 {
+    qDebug() << "[SOCKET-TYPING] Stopped by:" << senderId;
     if (senderId == current_chat_user_id) {
         typingLabel->clear();
     }
