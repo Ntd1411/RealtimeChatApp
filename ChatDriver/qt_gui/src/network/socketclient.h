@@ -48,6 +48,8 @@ private:
     bool shouldReconnect;
     bool authenticated;
     bool engineioReady;
+    int reconnectAttempts;
+    static const int MAX_RECONNECT = 5;
 };
 
 #endif // SOCKETCLIENT_H

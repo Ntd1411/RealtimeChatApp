@@ -19,7 +19,7 @@ void SocketClient::logToFile(const QString &msg)
 }
 
 SocketClient::SocketClient(const QString &serverUrl, const QString &t, QObject *parent)
-    : QObject(parent), server_url(serverUrl), token(t), message_counter(0), shouldReconnect(true), authenticated(false), engineioReady(false)
+    : QObject(parent), server_url(serverUrl), token(t), message_counter(0), shouldReconnect(true), authenticated(false), engineioReady(false), reconnectAttempts(0)
 {
     webSocket = new QWebSocket(QString(), QWebSocketProtocol::VersionLatest, this);
     
@@ -130,9 +130,14 @@ void SocketClient::sendMessage(const QString &receiverId, const QString &content
 
 void SocketClient::onConnected()
 {
-    logToFile("[TCP] Connected, waiting for Engine.IO OPEN...");
+    logToFile("[TCP] WebSocket connected successfully");
     engineioReady = false;
     authenticated = false;
+    
+    if (authTimeoutTimer) authTimeoutTimer->stop();
+    if (reconnectTimer) reconnectTimer->stop();
+    
+    logToFile("[TCP] Waiting for Engine.IO OPEN packet from server...");
 }
 
 void SocketClient::sendAuthMessage()
@@ -205,7 +210,14 @@ void SocketClient::onError(QAbstractSocket::SocketError error)
 
 void SocketClient::onReconnectTimerTimeout()
 {
-    logToFile("Attempting to reconnect...");
+    reconnectAttempts++;
+    if (reconnectAttempts > MAX_RECONNECT) {
+        logToFile(QString("[RECONNECT-STOP] Max %1 attempts reached").arg(MAX_RECONNECT));
+        shouldReconnect = false;
+        emit error("Không thể kết nối server");
+        return;
+    }
+    logToFile(QString("[RECONNECT] Attempt %1/%2...").arg(reconnectAttempts).arg(MAX_RECONNECT));
     connect();
 }
 
@@ -215,6 +227,8 @@ void SocketClient::parseSocketMessage(const QString &message)
         return;
     }
     
+    logToFile(QString("[RAW] Length=%1 First=%2").arg(message.length()).arg(message.left(50)));
+    
     char frameType = message[0].toLatin1();
     
     switch (frameType) {
@@ -222,28 +236,41 @@ void SocketClient::parseSocketMessage(const QString &message)
             // Engine.IO OPEN
             if (message.length() > 1) {
                 QString jsonStr = message.mid(1);
-                QJsonDocument doc = QJsonDocument::fromJson(jsonStr.toUtf8());
+                logToFile("[OPEN] Received: " + jsonStr.left(300));
                 
-                if (doc.isObject()) {
+                QJsonParseError err;
+                QJsonDocument doc = QJsonDocument::fromJson(jsonStr.toUtf8(), &err);
+                
+                if (err.error == QJsonParseError::NoError && doc.isObject()) {
                     engineioReady = true;
-                    logToFile("[OPEN] Engine.IO ready, sending auth...");
+                    reconnectAttempts = 0;  // Reset on success
+                    logToFile("[OPEN] OK → Sending auth...");
                     sendAuthMessage();
+                } else {
+                    logToFile("[OPEN-ERR] Parse failed: " + err.errorString());
                 }
             }
             break;
         }
         case '2': {
             // Engine.IO PING
+            logToFile("[PING] Received ping from server");
             if (webSocket && webSocket->isValid()) {
                 webSocket->sendTextMessage("3");
-                logToFile("[PING] Pong sent");
+                logToFile("[PONG] Pong sent");
+            } else {
+                logToFile("[PING-ERR] WebSocket not valid");
             }
             break;
         }
         case '4': {
             // Engine.IO MESSAGE (contains Socket.IO packet)
-            if (message.length() < 2) break;
+            if (message.length() < 2) {
+                logToFile("[MSG-ERR] Frame 4 too short");
+                break;
+            }
             
+            logToFile("[MSG] Engine.IO MESSAGE: " + message.left(100));
             QString socketioPacket = message.mid(1);
             char socketioType = socketioPacket[0].toLatin1();
             
@@ -255,6 +282,7 @@ void SocketClient::parseSocketMessage(const QString &message)
                         authTimeoutTimer->stop();
                     }
                     authenticated = true;
+                    reconnectAttempts = 0;  // Reset on auth success
                     if (reconnectTimer) {
                         reconnectTimer->stop();
                     }
