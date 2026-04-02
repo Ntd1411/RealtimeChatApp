@@ -34,6 +34,7 @@ signals:
     void typingStopped(const QString &senderId);
     void error(const QString &message);
     void onlineStatusChanged(const QString &userId, bool isOnline);
+    void onlineListReceived(const QJsonArray &userIds);
 
 private slots:
     void onConnected();

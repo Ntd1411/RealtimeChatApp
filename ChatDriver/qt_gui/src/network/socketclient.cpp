@@ -459,6 +459,14 @@ void SocketClient::parseSocketMessage(const QString &message)
                                     emit onlineStatusChanged(data["id"].toString(), true);
                                 } else if (eventName == "noti-offline") {
                                     emit onlineStatusChanged(data["id"].toString(), false);
+                                } else if (eventName == "noti-onlineList-toMe") {
+                                    // Array of online user IDs
+                                    logToFile("[SOCKETIO-EVENT] Online users list received");
+                                    if (arr[1].isArray()) {
+                                        QJsonArray userIds = arr[1].toArray();
+                                        logToFile("[SOCKETIO-EVENT] " + QString::number(userIds.size()) + " users online");
+                                        emit onlineListReceived(userIds);
+                                    }
                                 } else {
                                     logToFile("[SOCKETIO-EVENT] Unknown event: " + eventName);
                                 }
