@@ -222,10 +222,20 @@ void ChatWindow::onSendMessageClicked()
         return;
     }
     
-    // Send via socket
-    socketClient->sendMessage(current_chat_user_id, content);
+    qDebug() << "[SEND-MESSAGE] Sending message to:" << current_chat_user_id;
     
-    // Display own message
+    // Save message via API (for persistence)
+    apiClient->saveMessage(current_chat_user_id, content);
+    
+    // Send real-time via socket if connected
+    if (socketClient->isConnected()) {
+        socketClient->sendMessage(current_chat_user_id, content);
+        qDebug() << "[SEND-MESSAGE] Sent via socket";
+    } else {
+        qDebug() << "[SEND-MESSAGE] Socket not connected, message will be sent via API only";
+    }
+    
+    // Display own message immediately
     displayMessage(username, content, true);
     messageInput->clear();
     typingTimer->stop();

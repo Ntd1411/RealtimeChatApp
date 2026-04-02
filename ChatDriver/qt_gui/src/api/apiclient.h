@@ -28,6 +28,7 @@ public:
     // Message endpoints
     void getMessageUsers();
     void getMessages(const QString &userId);
+    void saveMessage(const QString &receiverId, const QString &content);
     
     // Getters
     QString getToken() const { return token; }

@@ -56,10 +56,8 @@ SocketClient::~SocketClient()
 
 void SocketClient::connect()
 {
-    logToFile("Attempting to connect...");
     authenticated = false;
     
-    // Convert http:// to ws:// and https:// to wss://
     QString wsUrl = server_url;
     if (wsUrl.startsWith("https://")) {
         wsUrl.replace(0, 8, "wss://");
@@ -67,14 +65,14 @@ void SocketClient::connect()
         wsUrl.replace(0, 7, "ws://");
     }
     
-    // Add proper Engine.IO parameters
-    // EIO=4 for Engine.IO v4 (used by Socket.IO 4.x)
-    // transport=websocket for WebSocket transport
     if (!wsUrl.endsWith("/")) wsUrl += "/";
     wsUrl += "socket.io/?EIO=4&transport=websocket";
     
-    logToFile("Socket URL: " + wsUrl);
-    logToFile("Will send Socket.IO CONNECT auth after Engine.IO handshake");
+    if (token.isEmpty()) {
+        emit error("Token not found");
+    }
+    
+    logToFile("[CONNECT] Connecting...");
     webSocket->open(QUrl(wsUrl));
 }
 
@@ -99,17 +97,22 @@ void SocketClient::sendMessage(const QString &receiverId, const QString &content
 {
     logToFile("Sending message to " + receiverId + ": " + content.left(100));
     
+    if (!authenticated) {
+        logToFile("ERROR: Not authenticated, cannot send message");
+        emit error("Chưa kết nối được server");
+        return;
+    }
+    
     QJsonObject payload;
-    payload["content"] = content;
+    payload["content"] = content;  // Sẽ được encode thành UTF-8 tự động
     payload["receiverId"] = receiverId;
     
     QJsonArray arr;
     arr.append("send-message");
     arr.append(payload);
-    arr.append(QJsonObject()); // acknowledgement callback
     
     QJsonDocument doc(arr);
-    QString message = "4" + doc.toJson(QJsonDocument::Compact); // "4" = emit frame type
+    QString message = "4" + doc.toJson(QJsonDocument::Compact); // "4" = Engine.IO MESSAGE frame
     
     if (webSocket && webSocket->isValid()) {
         webSocket->sendTextMessage(message);
@@ -120,117 +123,39 @@ void SocketClient::sendMessage(const QString &receiverId, const QString &content
     }
 }
 
-void SocketClient::markMessageSeen(const QString &senderId)
-{
-    QJsonObject payload;
-    payload["senderId"] = senderId;
-    
-    QJsonArray arr;
-    arr.append("seen-message");
-    arr.append(payload);
-    
-    QJsonDocument doc(arr);
-    QString message = "4" + doc.toJson(QJsonDocument::Compact);
-    
-    if (webSocket && webSocket->isValid()) {
-        webSocket->sendTextMessage(message);
-    }
-}
-
-void SocketClient::notifyTypingStart(const QString &receiverId)
-{
-    QJsonObject payload;
-    payload["receiverId"] = receiverId;
-    
-    QJsonArray arr;
-    arr.append("typing-start");
-    arr.append(payload);
-    
-    QJsonDocument doc(arr);
-    QString message = "4" + doc.toJson(QJsonDocument::Compact);
-    
-    if (webSocket && webSocket->isValid()) {
-        webSocket->sendTextMessage(message);
-    }
-}
-
-void SocketClient::notifyTypingStop(const QString &receiverId)
-{
-    QJsonObject payload;
-    payload["receiverId"] = receiverId;
-    
-    QJsonArray arr;
-    arr.append("typing-stop");
-    arr.append(payload);
-    
-    QJsonDocument doc(arr);
-    QString message = "4" + doc.toJson(QJsonDocument::Compact);
-    
-    if (webSocket && webSocket->isValid()) {
-        webSocket->sendTextMessage(message);
-    }
-}
-
 void SocketClient::onConnected()
 {
-    logToFile("========================================");
-    logToFile("[CONNECTED] TCP socket connected successfully");
-    logToFile("WebSocket state: " + QString::number(webSocket->isValid()));
-    logToFile("[CONNECTED] Waiting for Engine.IO OPEN frame from server...");
-    logToFile("========================================");
-    
+    logToFile("[TCP] Connected, waiting for Engine.IO OPEN...");
     engineioReady = false;
     authenticated = false;
-    
-    // Don't send auth here - wait for OPEN frame from server
-    // Auth will be sent in parseSocketMessage when we get OPEN frame
 }
 
 void SocketClient::sendAuthMessage()
 {
     if (!engineioReady) {
-        logToFile("[AUTH-FRAME] WARNING: Engine.IO not ready yet, cannot send auth");
         return;
     }
     
-    // Build Socket.IO CONNECT packet with auth
-    // Socket.IO packet format: 0 (CONNECT) + JSON auth
     QJsonObject authObj;
     authObj["token"] = token;
     
     QJsonDocument doc(authObj);
     QString authPacket = "0" + doc.toJson(QJsonDocument::Compact);
-    
-    // Wrap in Engine.IO message frame (type 4)
     QString engineioFrame = "4" + authPacket;
-    
-    logToFile("[AUTH-FRAME] Socket.IO packet: " + authPacket.left(100));
-    logToFile("[AUTH-FRAME] Engine.IO frame: " + engineioFrame.left(100));
-    logToFile("[AUTH-FRAME] Sending Socket.IO CONNECT with auth...");
     
     if (webSocket && webSocket->isValid()) {
         webSocket->sendTextMessage(engineioFrame);
-        logToFile("[AUTH-FRAME] Auth frame sent successfully");
-        logToFile("[AUTH-TIMEOUT] Starting 5 second timeout waiting for Socket.IO CONNECT response...");
+        logToFile("[AUTH] Sending auth...");
         
-        // Start auth timeout timer
         if (authTimeoutTimer) {
             authTimeoutTimer->start(5000);
         }
-    } else {
-        logToFile("[AUTH-FRAME] ERROR: WebSocket not valid");
-        emit error("Socket không sẵn sàng");
     }
 }
 
 void SocketClient::onAuthTimeoutTimerTimeout()
 {
-    logToFile("========================================");
-    logToFile("[AUTH-TIMEOUT] FAILED - No auth response from server within 5 seconds");
-    logToFile("[AUTH-TIMEOUT] Engine.IO Ready: " + QString(engineioReady ? "YES" : "NO"));
-    logToFile("[AUTH-TIMEOUT] Closing connection and reconnecting...");
-    logToFile("========================================");
-    
+    logToFile("[AUTH-TIMEOUT] No response, reconnecting...");
     authenticated = false;
     engineioReady = false;
     if (webSocket && webSocket->isValid()) {
@@ -240,59 +165,36 @@ void SocketClient::onAuthTimeoutTimerTimeout()
 
 void SocketClient::onDisconnected()
 {
-    logToFile("========================================");
-    logToFile("[DISCONNECTED] Socket disconnected from server");
-    logToFile("WebSocket state: " + QString::number(webSocket->isValid()));
-    logToFile("Authenticated: " + QString(authenticated ? "YES" : "NO"));
-    logToFile("Engine.IO Ready: " + QString(engineioReady ? "YES" : "NO"));
-    logToFile("[DISCONNECTED] Close code: " + QString::number(webSocket->closeCode()));
-    logToFile("[DISCONNECTED] Close reason: " + webSocket->closeReason());
-    logToFile("========================================");
+    logToFile("[DISCONNECT] Closed code: " + QString::number(webSocket->closeCode()));
     
     engineioReady = false;
     authenticated = false;
     
-    // Stop auth timeout timer if running
     if (authTimeoutTimer) {
         authTimeoutTimer->stop();
     }
     
     emit disconnected();
     
-    // Auto-reconnect after 5 seconds
     if (shouldReconnect && reconnectTimer) {
-        logToFile("[RECONNECT] Scheduling reconnect in 5 seconds...");
+        logToFile("[RECONNECT] Reconnecting in 5 seconds...");
         reconnectTimer->start(5000);
     }
 }
 
 void SocketClient::onTextMessageReceived(const QString &message)
 {
-    logToFile("========================================");
-    logToFile("[TEXT-MESSAGE-RECEIVED] Message arrived");
-    logToFile("[TEXT-MESSAGE-RECEIVED] Length: " + QString::number(message.length()));
-    logToFile("[TEXT-MESSAGE-RECEIVED] Full content: " + message);
-    logToFile("[TEXT-MESSAGE-RECEIVED] First 10 chars hex:");
-    
-    // Log hex values of first 10 chars
-    for (int i = 0; i < qMin(10, message.length()); i++) {
-        logToFile("  [" + QString::number(i) + "] = " + 
-                 QString::number((int)message[i].toLatin1()) + 
-                 " (" + message[i] + ")");
+    if (message.isEmpty()) {
+        return;
     }
-    logToFile("========================================");
+    logToFile("[TEXT-MESSAGE] Received " + QString::number(message.length()) + " bytes");
     parseSocketMessage(message);
 }
 
 void SocketClient::onError(QAbstractSocket::SocketError error)
 {
     QString errorMsg = webSocket->errorString();
-    logToFile("========================================");
-    logToFile("[SOCKET-ERROR] Error code: " + QString::number(error));
-    logToFile("[SOCKET-ERROR] Error message: " + errorMsg);
-    logToFile("[SOCKET-ERROR] WebSocket state: " + QString::number(webSocket->state()));
-    logToFile("[SOCKET-ERROR] Authenticated: " + QString(authenticated ? "YES" : "NO"));
-    logToFile("========================================");
+    logToFile("[SOCKET-ERROR] Error: " + errorMsg);
     emit this->error(errorMsg);
 }
 
@@ -305,207 +207,78 @@ void SocketClient::onReconnectTimerTimeout()
 void SocketClient::parseSocketMessage(const QString &message)
 {
     if (message.isEmpty()) {
-        logToFile("Empty message received");
         return;
     }
-    
-    logToFile("===== SOCKET MESSAGE START =====");
-    logToFile("Message length: " + QString::number(message.length()));
-    logToFile("First 200 chars: " + message.left(200));
-    logToFile("First char code: " + QString::number((int)message[0].toLatin1()));
-    
-    // Socket.IO protocol: first char is frame type
-    // 0 = disconnect, 1 = connect, 2 = disconnect, 3 = ping, 4 = pong, 5 = message, 6 = upgrade, 7 = noop
-    // For Socket.IO namespace: 0 = disconnect, 1 = connect, 2 = disconnect, 3 = error, 4 = ack, 5 = error
     
     char frameType = message[0].toLatin1();
     
     switch (frameType) {
         case '0': {
-            logToFile("[ENGINE-IO-OPEN] Server sent OPEN frame");
-            
-            // Parse OPEN frame - extract sid and other params
+            // Engine.IO OPEN
             if (message.length() > 1) {
                 QString jsonStr = message.mid(1);
-                QJsonParseError jsonError;
-                QJsonDocument doc = QJsonDocument::fromJson(jsonStr.toUtf8(), &jsonError);
+                QJsonDocument doc = QJsonDocument::fromJson(jsonStr.toUtf8());
                 
                 if (doc.isObject()) {
-                    QJsonObject obj = doc.object();
-                    QString sid = obj["sid"].toString();
-                    int pingInterval = obj["pingInterval"].toInt();
-                    
-                    logToFile("[ENGINE-IO-OPEN] Session ID: " + sid);
-                    logToFile("[ENGINE-IO-OPEN] Ping interval: " + QString::number(pingInterval) + "ms");
-                    
                     engineioReady = true;
-                    logToFile("[ENGINE-IO-OPEN] Engine.IO ready - NOW sending Socket.IO CONNECT auth...");
-                    
-                    // NOW send Socket.IO CONNECT auth after Engine.IO is ready
+                    logToFile("[OPEN] Engine.IO ready, sending auth...");
                     sendAuthMessage();
-                } else {
-                    logToFile("[ENGINE-IO-OPEN] ERROR: Cannot parse OPEN frame JSON");
                 }
             }
             break;
         }
-        case '1': {
-            logToFile("[ENGINE-IO-CLOSE] Server sent CLOSE frame");
-            break;
-        }
         case '2': {
-            logToFile("[ENGINE-IO-PING] Received ping, sending pong");
-            // Respond with pong (3)
+            // Engine.IO PING
             if (webSocket && webSocket->isValid()) {
                 webSocket->sendTextMessage("3");
+                logToFile("[PING] Pong sent");
             }
-            break;
-        }
-        case '3': {
-            logToFile("[ENGINE-IO-PONG] Received pong");
             break;
         }
         case '4': {
-            logToFile("[ENGINE-IO-MESSAGE] Received Engine.IO message frame");
-            
-            // Engine.IO frame 4 contains Socket.IO packet
-            // Extract Socket.IO packet (everything after the '4')
-            if (message.length() < 2) {
-                logToFile("[ENGINE-IO-MESSAGE] Message too short");
-                break;
-            }
+            // Engine.IO MESSAGE (contains Socket.IO packet)
+            if (message.length() < 2) break;
             
             QString socketioPacket = message.mid(1);
             char socketioType = socketioPacket[0].toLatin1();
             
-            logToFile("[SOCKETIO-PACKET] Type: " + QString::number(socketioType) + 
-                     " Content: " + socketioPacket.left(200));
-            
             switch (socketioType) {
                 case '0': {
                     // Socket.IO CONNECT response
-                    logToFile("[SOCKETIO-CONNECT] Server connect response received");
-                    
-                    // Stop auth timeout since we got response
+                    logToFile("[CONNECT] Auth successful");
                     if (authTimeoutTimer) {
                         authTimeoutTimer->stop();
                     }
-                    
-                    // Check if there's JSON data (error response)
-                    if (socketioPacket.length() > 1 && socketioPacket[1] == '{') {
-                        QString jsonStr = socketioPacket.mid(1);
-                        QJsonParseError jsonError;
-                        QJsonDocument doc = QJsonDocument::fromJson(jsonStr.toUtf8(), &jsonError);
-                        
-                        if (doc.isObject()) {
-                            QJsonObject obj = doc.object();
-                            if (obj.contains("message")) {
-                                // Auth error
-                                QString errorMsg = obj["message"].toString();
-                                logToFile("[SOCKETIO-CONNECT] AUTH FAILED: " + errorMsg);
-                                emit error("Lỗi xác thực: " + errorMsg);
-                                if (webSocket && webSocket->isValid()) {
-                                    webSocket->close();
-                                }
-                            } else {
-                                logToFile("[SOCKETIO-CONNECT] AUTH SUCCESSFUL");
-                                authenticated = true;
-                                if (reconnectTimer) {
-                                    reconnectTimer->stop();
-                                }
-                                emit connected();
-                            }
-                        } else {
-                            logToFile("[SOCKETIO-CONNECT] JSON parse error: " + jsonError.errorString());
-                        }
-                    } else {
-                        // No JSON data = successful connect
-                        logToFile("[SOCKETIO-CONNECT] AUTH SUCCESSFUL (no data)");
-                        authenticated = true;
-                        if (reconnectTimer) {
-                            reconnectTimer->stop();
-                        }
-                        emit connected();
+                    authenticated = true;
+                    if (reconnectTimer) {
+                        reconnectTimer->stop();
                     }
+                    emit connected();
                     break;
                 }
                 case '2': {
-                    // Socket.IO EVENT - app message
-                    logToFile("[SOCKETIO-EVENT] Received socket event");
-                    
+                    // Socket.IO EVENT
                     if (socketioPacket.length() > 1) {
                         QString jsonStr = socketioPacket.mid(1);
-                        QJsonParseError jsonError;
-                        QJsonDocument doc = QJsonDocument::fromJson(jsonStr.toUtf8(), &jsonError);
+                        QJsonDocument doc = QJsonDocument::fromJson(jsonStr.toUtf8());
                         
                         if (doc.isArray()) {
                             QJsonArray arr = doc.array();
                             if (arr.size() >= 2) {
                                 QString eventName = arr[0].toString();
-                                QJsonObject data = arr[1].toObject();
-                                
-                                logToFile("[SOCKETIO-EVENT] Event: " + eventName);
                                 
                                 if (eventName == "receive-message") {
-                                    logToFile("[SOCKETIO-EVENT] Received message event");
+                                    QJsonObject data = arr[1].toObject();
+                                    logToFile("[EVENT] Message received");
                                     emit messageReceived(data);
-                                } else if (eventName == "seen-message") {
-                                    emit messagesSeen(data["viewerId"].toString());
-                                } else if (eventName == "typing-start") {
-                                    emit typingStarted(data["senderId"].toString(), data["senderName"].toString());
-                                } else if (eventName == "typing-stop") {
-                                    emit typingStopped(data["senderId"].toString());
-                                } else if (eventName == "noti-online") {
-                                    emit onlineStatusChanged(data["id"].toString(), true);
-                                } else if (eventName == "noti-offline") {
-                                    emit onlineStatusChanged(data["id"].toString(), false);
-                                } else if (eventName == "noti-onlineList-toMe") {
-                                    // Array of online user IDs
-                                    logToFile("[SOCKETIO-EVENT] Online users list received");
-                                    if (arr[1].isArray()) {
-                                        QJsonArray userIds = arr[1].toArray();
-                                        logToFile("[SOCKETIO-EVENT] " + QString::number(userIds.size()) + " users online");
-                                        emit onlineListReceived(userIds);
-                                    }
-                                } else {
-                                    logToFile("[SOCKETIO-EVENT] Unknown event: " + eventName);
                                 }
                             }
-                        } else {
-                            logToFile("[SOCKETIO-EVENT] JSON not array");
                         }
                     }
                     break;
                 }
-                case '4': {
-                    // Socket.IO ERROR
-                    logToFile("[SOCKETIO-ERROR] Error packet received: " + socketioPacket);
-                    if (socketioPacket.length() > 1) {
-                        QString errorData = socketioPacket.mid(1);
-                        logToFile("[SOCKETIO-ERROR] Error data: " + errorData);
-                        emit error("Socket error: " + errorData);
-                    }
-                    break;
-                }
-                default: {
-                    logToFile("[SOCKETIO-UNKNOWN] Type: " + QString::number(socketioType) + 
-                             " Content: " + socketioPacket.left(100));
-                }
             }
             break;
         }
-        case '5': {
-            logToFile("[FRAME-5] Ack");
-            break;
-        }
-        case '6': {
-            logToFile("[FRAME-6] Error: " + message.mid(1, 100));
-            break;
-        }
-        default: {
-            logToFile("[UNKNOWN FRAME] Type: " + QString::number((int)frameType) + " Content: " + message.left(100));
-        }
     }
-    
-    logToFile("===== SOCKET MESSAGE END =====");
 }

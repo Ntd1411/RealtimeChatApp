@@ -302,6 +302,50 @@ void ApiClient::getMessages(const QString &userId)
     connect(messagesReply, SIGNAL(finished()), this, SLOT(onMessagesFinished()));
 }
 
+void ApiClient::saveMessage(const QString &receiverId, const QString &content)
+{
+    logToFile("[SAVE-MESSAGE] Saving message to " + receiverId + ": " + content.left(100));
+    
+    QJsonObject payload;
+    payload["receiverId"] = receiverId;
+    payload["content"] = content;
+    
+    QJsonDocument doc(payload);
+    QByteArray jsonData = doc.toJson();
+    
+    QNetworkRequest request = createRequest("/messages");
+    logToFile("[SAVE-MESSAGE] URL: " + base_url + "/messages");
+    logToFile("[SAVE-MESSAGE] Payload: " + QString::fromUtf8(jsonData));
+    
+    QNetworkReply *reply = manager->post(request, jsonData);
+    
+    if (!reply) {
+        logToFile("[SAVE-MESSAGE] ERROR: Failed to create network reply!");
+        emit error("Không thể gửi tin nhắn");
+        return;
+    }
+    
+    // Create one-shot connection to handle response
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        logToFile("[SAVE-MESSAGE-RESPONSE] Response received");
+        
+        int httpStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        QByteArray responseData = reply->readAll();
+        
+        logToFile("[SAVE-MESSAGE-RESPONSE] HTTP Status: " + QString::number(httpStatus));
+        logToFile("[SAVE-MESSAGE-RESPONSE] Response: " + QString::fromUtf8(responseData).left(200));
+        
+        reply->deleteLater();
+        
+        if (httpStatus >= 400) {
+            logToFile("[SAVE-MESSAGE-RESPONSE] ERROR: Failed to save message");
+            emit error("Không thể lưu tin nhắn");
+        } else {
+            logToFile("[SAVE-MESSAGE-RESPONSE] Message saved successfully");
+        }
+    });
+}
+
 void ApiClient::updateProfile(const QJsonObject &data)
 {
     QNetworkRequest request = createRequest("/api/user/update");

@@ -18,23 +18,13 @@ public:
     void connect();
     void disconnect();
     bool isConnected() const;
-    
-    // Emit events
     void sendMessage(const QString &receiverId, const QString &content);
-    void markMessageSeen(const QString &senderId);
-    void notifyTypingStart(const QString &receiverId);
-    void notifyTypingStop(const QString &receiverId);
 
 signals:
     void connected();
     void disconnected();
     void messageReceived(const QJsonObject &message);
-    void messagesSeen(const QString &viewerId);
-    void typingStarted(const QString &senderId, const QString &senderName);
-    void typingStopped(const QString &senderId);
     void error(const QString &message);
-    void onlineStatusChanged(const QString &userId, bool isOnline);
-    void onlineListReceived(const QJsonArray &userIds);
 
 private slots:
     void onConnected();
