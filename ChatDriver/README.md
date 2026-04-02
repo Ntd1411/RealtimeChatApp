@@ -117,5 +117,7 @@ make
 make install
 cd ~
 cd RealtimeChatApp/ChatDriver/qt_gui/build
+make clean
+make
 ./chatapp
 ```

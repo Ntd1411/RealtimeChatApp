@@ -236,9 +236,9 @@ void ApiClient::logout()
 
 void ApiClient::searchUsers(const QString &query)
 {
-    QUrl url(base_url + "/api/user/search");
+    QUrl url(base_url + "/users/search");
     QUrlQuery urlQuery;
-    urlQuery.addQueryItem("q", query);
+    urlQuery.addQueryItem("keyword", query);
     url.setQuery(urlQuery);
     
     QNetworkRequest request(url);
@@ -247,7 +247,16 @@ void ApiClient::searchUsers(const QString &query)
         request.setRawHeader("Authorization", ("Bearer " + token).toUtf8());
     }
     
+    logToFile("[SEARCH-USERS] Searching: " + query);
+    logToFile("[SEARCH-USERS] URL: " + url.toString());
     searchReply = manager->get(request);
+    
+    if (!searchReply) {
+        logToFile("[SEARCH-USERS] ERROR: Failed to create network reply!");
+        emit searchFailed("Lỗi mạng");
+        return;
+    }
+    
     connect(searchReply, SIGNAL(finished()), this, SLOT(onSearchFinished()));
 }
 
@@ -634,22 +643,103 @@ void ApiClient::onLogoutFinished()
 
 void ApiClient::onSearchFinished()
 {
-    if (!searchReply) return;
+    logToFile("[SEARCH-RESPONSE] Received response");
     
-    if (searchReply->error() == QNetworkReply::NoError) {
-        QByteArray responseData = searchReply->readAll();
-        QJsonDocument doc = QJsonDocument::fromJson(responseData);
-        
-        if (doc.isObject()) {
-            QJsonObject obj = doc.object();
-            if (obj.contains("data")) {
-                QJsonArray users = obj["data"].toArray();
-                emit searchResults(users);
-            }
-        }
-    } else {
-        emit searchFailed(searchReply->errorString());
+    if (!searchReply) {
+        logToFile("[SEARCH-RESPONSE] ERROR: searchReply is NULL!");
+        emit searchFailed("Không có phản hồi từ máy chủ");
+        return;
     }
+    
+    int httpStatus = searchReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    logToFile("[SEARCH-RESPONSE] HTTP Status: " + QString::number(httpStatus));
+    
+    QByteArray responseData = searchReply->readAll();
+    logToFile("[SEARCH-RESPONSE] Raw response: " + QString::fromUtf8(responseData));
+    
+    if (searchReply->error() != QNetworkReply::NoError) {
+        QString errorMsg = searchReply->errorString();
+        logToFile("[SEARCH-RESPONSE] Network Error: " + errorMsg);
+        emit searchFailed("Lỗi mạng: " + errorMsg);
+        searchReply->deleteLater();
+        searchReply = 0;
+        return;
+    }
+    
+    // === Handle encoding ===
+    responseData = responseData.trimmed();
+    
+    // Remove UTF-8 BOM if present
+    if (responseData.size() >= 3 &&
+        (unsigned char)responseData[0] == 0xEF &&
+        (unsigned char)responseData[1] == 0xBB &&
+        (unsigned char)responseData[2] == 0xBF) {
+        responseData = responseData.mid(3);
+    }
+    
+    if (responseData.isEmpty()) {
+        logToFile("[SEARCH-RESPONSE] ERROR: Response is EMPTY!");
+        emit searchFailed("Máy chủ trả về phản hồi trống");
+        searchReply->deleteLater();
+        searchReply = 0;
+        return;
+    }
+    
+    QString decodedStr = QString::fromUtf8(responseData.constData(), responseData.size());
+    bool hasReplacement = false;
+    for (int i = 0; i < decodedStr.length(); ++i) {
+        if (decodedStr.at(i).unicode() == 0xFFFD) { hasReplacement = true; break; }
+    }
+    if (hasReplacement) {
+        logToFile("[SEARCH-RESPONSE] Detected invalid UTF-8, trying fromLatin1...");
+        decodedStr = QString::fromLatin1(responseData.constData(), responseData.size());
+    }
+    
+    QByteArray normalizedData = decodedStr.toUtf8();
+    logToFile("[SEARCH-RESPONSE] Normalized response: " + decodedStr.left(500));
+    
+    // === Parse JSON ===
+    QJsonParseError jsonError;
+    QJsonDocument doc = QJsonDocument::fromJson(normalizedData, &jsonError);
+    
+    if (doc.isNull()) {
+        logToFile("[SEARCH-RESPONSE] ERROR: Cannot parse JSON: " + jsonError.errorString());
+        emit searchFailed("Phản hồi JSON không hợp lệ");
+        searchReply->deleteLater();
+        searchReply = 0;
+        return;
+    }
+    
+    if (!doc.isObject()) {
+        logToFile("[SEARCH-RESPONSE] ERROR: Response is not a JSON object!");
+        emit searchFailed("Phản hồi không hợp lệ");
+        searchReply->deleteLater();
+        searchReply = 0;
+        return;
+    }
+    
+    QJsonObject obj = doc.object();
+    logToFile("[SEARCH-RESPONSE] JSON keys: " + obj.keys().join(", "));
+    
+    // === Extract users array ===
+    if (httpStatus >= 400) {
+        QString errorMessage = "Tìm kiếm thất bại";
+        if (obj.contains("message")) {
+            errorMessage = obj["message"].toString();
+        }
+        logToFile("[SEARCH-RESPONSE] Search failed: " + errorMessage);
+        emit searchFailed(errorMessage);
+    } else {
+        QJsonArray users;
+        if (obj.contains("users") && obj["users"].isArray()) {
+            users = obj["users"].toArray();
+            logToFile("[SEARCH-RESPONSE] Found " + QString::number(users.size()) + " users");
+        } else {
+            logToFile("[SEARCH-RESPONSE] WARNING: 'users' field not found in response");
+        }
+        emit searchResults(users);
+    }
+    
     searchReply->deleteLater();
     searchReply = 0;
 }
