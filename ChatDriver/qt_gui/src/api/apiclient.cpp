@@ -1021,9 +1021,28 @@ void ApiClient::onMessagesFinished()
     
     int pos = 0;
     while ((pos = rawResponseStr.indexOf("\"content\":", pos)) != -1) {
-        // Find the opening quote of content value
-        int quoteStart = rawResponseStr.indexOf('"', pos + 11);
-        if (quoteStart == -1) break;
+        // Skip past "content":
+        int colonPos = pos + 9;  // Position after "content"
+        
+        // Find ':' character
+        while (colonPos < rawResponseStr.length() && rawResponseStr[colonPos] != ':') {
+            colonPos++;
+        }
+        if (colonPos >= rawResponseStr.length()) break;
+        
+        // Skip past ':' and optional space
+        colonPos++;
+        while (colonPos < rawResponseStr.length() && rawResponseStr[colonPos] == ' ') {
+            colonPos++;
+        }
+        
+        // Now we should be at the opening quote of content value
+        if (colonPos >= rawResponseStr.length() || rawResponseStr[colonPos] != '"') {
+            pos = colonPos;
+            continue;
+        }
+        
+        int quoteStart = colonPos;
         
         // Find the closing quote (handle escaped quotes)
         int quoteEnd = quoteStart + 1;
