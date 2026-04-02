@@ -715,8 +715,16 @@ void ApiClient::onSearchFinished()
     
     logToFile("[SEARCH-RESPONSE] Raw response: " + QString::fromLatin1(responseData));
     
+    // === Try UTF-8 first, fallback to Latin1 if invalid ===
+    QString rawResponseStr = QString::fromUtf8(responseData.constData(), responseData.size());
+    
+    // Check for invalid UTF-8 (replacement characters)
+    if (rawResponseStr.contains(QChar(0xFFFD))) {
+        logToFile("[SEARCH-RESPONSE] Invalid UTF-8 detected, using Latin1");
+        rawResponseStr = QString::fromLatin1(responseData.constData(), responseData.size());
+    }
+    
     // === Extract message field value from raw response before removing ===
-    QString rawResponseStr = QString::fromLatin1(responseData.constData(), responseData.size());
     QString messageValue;
     
     int msgIdx = rawResponseStr.indexOf("\"message\":");
@@ -851,8 +859,16 @@ void ApiClient::onMessageUsersFinished()
     
     logToFile("[GET-MESSAGE-USERS-RESPONSE] Raw response size: " + QString::number(responseData.size()));
     
+    // === Try UTF-8 first, fallback to Latin1 if invalid ===
+    QString rawResponseStr = QString::fromUtf8(responseData.constData(), responseData.size());
+    
+    // Check for invalid UTF-8 (replacement characters)
+    if (rawResponseStr.contains(QChar(0xFFFD))) {
+        logToFile("[GET-MESSAGE-USERS-RESPONSE] Invalid UTF-8 detected, using Latin1");
+        rawResponseStr = QString::fromLatin1(responseData.constData(), responseData.size());
+    }
+    
     // === Extract lastMessage objects from raw response before cleaning ===
-    QString rawResponseStr = QString::fromLatin1(responseData.constData(), responseData.size());
     QStringList lastMessages;
     
     int pos = 0;
@@ -1015,8 +1031,16 @@ void ApiClient::onMessagesFinished()
     
     logToFile("[GET-MESSAGES-RESPONSE] Raw response size: " + QString::number(responseData.size()));
     
+    // === Try UTF-8 first, fallback to Latin1 if invalid ===
+    QString rawResponseStr = QString::fromUtf8(responseData.constData(), responseData.size());
+    
+    // Check for invalid UTF-8 (replacement characters)
+    if (rawResponseStr.contains(QChar(0xFFFD))) {
+        logToFile("[GET-MESSAGES-RESPONSE] Invalid UTF-8 detected, using Latin1");
+        rawResponseStr = QString::fromLatin1(responseData.constData(), responseData.size());
+    }
+    
     // === Extract content values from raw response before cleaning ===
-    QString rawResponseStr = QString::fromLatin1(responseData.constData(), responseData.size());
     QStringList contentValues;
     
     int pos = 0;
