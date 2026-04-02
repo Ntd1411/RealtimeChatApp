@@ -34,6 +34,11 @@ SocketClient::SocketClient(const QString &serverUrl, const QString &t, QObject *
     reconnectTimer = new QTimer(this);
     QObject::connect(reconnectTimer, SIGNAL(timeout()), this, SLOT(onReconnectTimerTimeout()));
     
+    // Setup auth timeout timer - wait max 5 seconds for server auth response
+    authTimeoutTimer = new QTimer(this);
+    authTimeoutTimer->setSingleShot(true);
+    QObject::connect(authTimeoutTimer, SIGNAL(timeout()), this, SLOT(onAuthTimeoutTimerTimeout()));
+    
     logToFile("SocketClient initialized with server: " + serverUrl);
 }
 
@@ -62,12 +67,14 @@ void SocketClient::connect()
         wsUrl.replace(0, 7, "ws://");
     }
     
-    // Connect without auth token in query - will send auth via Socket.IO protocol
+    // Add proper Engine.IO parameters
+    // EIO=4 for Engine.IO v4 (used by Socket.IO 4.x)
+    // transport=websocket for WebSocket transport
     if (!wsUrl.endsWith("/")) wsUrl += "/";
-    wsUrl += "socket.io/?transport=websocket";
+    wsUrl += "socket.io/?EIO=4&transport=websocket";
     
     logToFile("Socket URL: " + wsUrl);
-    logToFile("Will send auth token after connection established");
+    logToFile("Will send Socket.IO CONNECT auth after Engine.IO handshake");
     webSocket->open(QUrl(wsUrl));
 }
 
@@ -197,9 +204,28 @@ void SocketClient::sendAuthMessage()
     if (webSocket && webSocket->isValid()) {
         webSocket->sendTextMessage(engineioFrame);
         logToFile("[AUTH-FRAME] Auth frame sent successfully");
+        logToFile("[AUTH-TIMEOUT] Starting 5 second timeout waiting for auth response...");
+        
+        // Start auth timeout timer
+        if (authTimeoutTimer) {
+            authTimeoutTimer->start(5000);
+        }
     } else {
         logToFile("[AUTH-FRAME] ERROR: WebSocket not valid");
         emit error("Socket không sẵn sàng");
+    }
+}
+
+void SocketClient::onAuthTimeoutTimerTimeout()
+{
+    logToFile("========================================");
+    logToFile("[AUTH-TIMEOUT] FAILED - No auth response from server within 5 seconds");
+    logToFile("[AUTH-TIMEOUT] Closing connection and reconnecting...");
+    logToFile("========================================");
+    
+    authenticated = false;
+    if (webSocket && webSocket->isValid()) {
+        webSocket->close();
     }
 }
 
@@ -208,7 +234,16 @@ void SocketClient::onDisconnected()
     logToFile("========================================");
     logToFile("[DISCONNECTED] Socket disconnected from server");
     logToFile("WebSocket state: " + QString::number(webSocket->isValid()));
+    logToFile("Authenticated: " + QString(authenticated ? "YES" : "NO"));
+    logToFile("[DISCONNECTED] Close code: " + QString::number(webSocket->closeCode()));
+    logToFile("[DISCONNECTED] Close reason: " + webSocket->closeReason());
     logToFile("========================================");
+    
+    // Stop auth timeout timer if running
+    if (authTimeoutTimer) {
+        authTimeoutTimer->stop();
+    }
+    
     emit disconnected();
     
     // Auto-reconnect after 5 seconds
@@ -314,6 +349,11 @@ void SocketClient::parseSocketMessage(const QString &message)
                 case '0': {
                     // Socket.IO CONNECT response
                     logToFile("[SOCKETIO-CONNECT] Server connect response received");
+                    
+                    // Stop auth timeout since we got response
+                    if (authTimeoutTimer) {
+                        authTimeoutTimer->stop();
+                    }
                     
                     // Check if there's JSON data (error response)
                     if (socketioPacket.length() > 1 && socketioPacket[1] == '{') {

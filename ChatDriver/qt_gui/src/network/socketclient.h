@@ -41,6 +41,7 @@ private slots:
     void onTextMessageReceived(const QString &message);
     void onError(QAbstractSocket::SocketError error);
     void onReconnectTimerTimeout();
+    void onAuthTimeoutTimerTimeout();
 
 private:
     void parseSocketMessage(const QString &message);
@@ -52,6 +53,7 @@ private:
     QString token;
     long long message_counter;
     QTimer *reconnectTimer;
+    QTimer *authTimeoutTimer;
     bool shouldReconnect;
     bool authenticated;
 };
