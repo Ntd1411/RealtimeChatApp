@@ -9,6 +9,7 @@
 #include <QUrlQuery>
 #include <QEventLoop>
 #include <QDebug>
+#include <QTextCodec>
 
 #include <QFile>
 #include <QTextStream>
@@ -115,9 +116,15 @@ ApiClient::ApiClient(const QString &baseUrl, QObject *parent)
     : QObject(parent), base_url(baseUrl), loginReply(0), signupReply(0), logoutReply(0),
       searchReply(0), messageUsersReply(0), messagesReply(0), updateProfileReply(0), getMeReply(0)
 {
+    // Set UTF-8 codec for all strings
+    QTextCodec *codec = QTextCodec::codecForName("UTF-8");
+    QTextCodec::setCodecForCStrings(codec);
+    QTextCodec::setCodecForTr(codec);
+    
     manager = new QNetworkAccessManager(this);
     cryptoClient = new KernelCryptoClient();
     logToFile("[API-CLIENT] Crypto client initialized");
+    logToFile("[API-CLIENT] UTF-8 codec set");
 }
 
 QNetworkRequest ApiClient::createRequest(const QString &endpoint)
