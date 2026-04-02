@@ -45,6 +45,7 @@ private slots:
 private:
     void parseSocketMessage(const QString &message);
     void logToFile(const QString &msg);
+    void sendAuthMessage();
     
     QWebSocket *webSocket;
     QString server_url;
@@ -52,6 +53,7 @@ private:
     long long message_counter;
     QTimer *reconnectTimer;
     bool shouldReconnect;
+    bool authenticated;
 };
 
 #endif // SOCKETCLIENT_H

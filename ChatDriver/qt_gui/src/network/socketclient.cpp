@@ -19,7 +19,7 @@ void SocketClient::logToFile(const QString &msg)
 }
 
 SocketClient::SocketClient(const QString &serverUrl, const QString &t, QObject *parent)
-    : QObject(parent), server_url(serverUrl), token(t), message_counter(0), shouldReconnect(true)
+    : QObject(parent), server_url(serverUrl), token(t), message_counter(0), shouldReconnect(true), authenticated(false)
 {
     webSocket = new QWebSocket(QString(), QWebSocketProtocol::VersionLatest, this);
     
@@ -52,6 +52,7 @@ SocketClient::~SocketClient()
 void SocketClient::connect()
 {
     logToFile("Attempting to connect...");
+    authenticated = false;
     
     // Convert http:// to ws:// and https:// to wss://
     QString wsUrl = server_url;
@@ -61,11 +62,12 @@ void SocketClient::connect()
         wsUrl.replace(0, 7, "ws://");
     }
     
-    // Add auth token to query
+    // Connect without auth token in query - will send auth via Socket.IO protocol
     if (!wsUrl.endsWith("/")) wsUrl += "/";
-    wsUrl += "socket.io/?transport=websocket&token=" + token;
+    wsUrl += "socket.io/?transport=websocket";
     
     logToFile("Socket URL: " + wsUrl);
+    logToFile("Will send auth token after connection established");
     webSocket->open(QUrl(wsUrl));
 }
 
@@ -165,15 +167,33 @@ void SocketClient::notifyTypingStop(const QString &receiverId)
 void SocketClient::onConnected()
 {
     logToFile("========================================");
-    logToFile("[CONNECTED] Socket connected successfully");
+    logToFile("[CONNECTED] TCP socket connected successfully");
     logToFile("WebSocket state: " + QString::number(webSocket->isValid()));
-    logToFile("[CONNECTED] Waiting for incoming messages from server...");
+    logToFile("[CONNECTED] Sending Socket.IO auth frame...");
     logToFile("========================================");
     
-    if (reconnectTimer) {
-        reconnectTimer->stop();
+    // Send auth frame to server
+    sendAuthMessage();
+}
+
+void SocketClient::sendAuthMessage()
+{
+    // Build Socket.IO auth frame: "0{\"token\":\"jwt...\"}"
+    QJsonObject authObj;
+    authObj["token"] = token;
+    
+    QJsonDocument doc(authObj);
+    QString authFrame = "0" + doc.toJson(QJsonDocument::Compact);
+    
+    logToFile("[AUTH-FRAME] Sending auth: " + authFrame.left(100));
+    
+    if (webSocket && webSocket->isValid()) {
+        webSocket->sendTextMessage(authFrame);
+        logToFile("[AUTH-FRAME] Auth frame sent");
+    } else {
+        logToFile("[AUTH-FRAME] ERROR: WebSocket not valid");
+        emit error("Socket không sẵn sàng");
     }
-    emit connected();
 }
 
 void SocketClient::onDisconnected()
@@ -238,7 +258,36 @@ void SocketClient::parseSocketMessage(const QString &message)
     
     switch (frameType) {
         case '0': {
-            logToFile("[FRAME-0] Disconnect: " + message.mid(1, 50));
+            logToFile("[FRAME-0] Connect response: " + message);
+            
+            // Parse connect response - if it has JSON, check for errors
+            if (message.length() > 1) {
+                QString jsonStr = message.mid(1);
+                QJsonParseError jsonError;
+                QJsonDocument doc = QJsonDocument::fromJson(jsonStr.toUtf8(), &jsonError);
+                
+                if (doc.isObject()) {
+                    QJsonObject obj = doc.object();
+                    if (obj.contains("message")) {
+                        // Error in auth
+                        QString errorMsg = obj["message"].toString();
+                        logToFile("[FRAME-0] AUTH FAILED: " + errorMsg);
+                        emit error("Lỗi xác thực: " + errorMsg);
+                        if (webSocket && webSocket->isValid()) {
+                            webSocket->close();
+                        }
+                        return;
+                    }
+                }
+            }
+            
+            // Auth successful
+            logToFile("[FRAME-0] AUTH SUCCESSFUL - Socket.IO connection established");
+            authenticated = true;
+            if (reconnectTimer) {
+                reconnectTimer->stop();
+            }
+            emit connected();
             break;
         }
         case '1': {
@@ -260,6 +309,12 @@ void SocketClient::parseSocketMessage(const QString &message)
         }
         case '4': {
             logToFile("[FRAME-4] Emit message (Socket.IO event)");
+            
+            if (!authenticated) {
+                logToFile("[FRAME-4] WARNING: Not authenticated yet, ignoring event");
+                break;
+            }
+            
             // Emit message - parse JSON after "4"
             QString jsonStr = message.mid(1);
             logToFile("JSON to parse: " + jsonStr.left(200));
