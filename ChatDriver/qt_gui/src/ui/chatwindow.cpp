@@ -192,9 +192,6 @@ void ChatWindow::setupConnections()
     connect(sendButton, &QPushButton::clicked, this, &ChatWindow::onSendMessageClicked);
     connect(messageInput, &QLineEdit::returnPressed, this, &ChatWindow::onSendMessageClicked);
     
-    // Message input typing
-    connect(messageInput, &QLineEdit::textChanged, this, &ChatWindow::onMessageInputTextChanged);
-    
     // API Signals
     connect(apiClient, &ApiClient::searchResults, this, &ChatWindow::onSearchResults);
     connect(apiClient, &ApiClient::searchFailed, this, &ChatWindow::onSearchFailed);
@@ -231,9 +228,6 @@ void ChatWindow::onSendMessageClicked()
     // Display own message immediately
     displayMessage(username, content, true);
     messageInput->clear();
-    typingTimer->stop();
-    isTyping = false;
-    typingLabel->clear();
 }
 
 void ChatWindow::onSearchUserClicked()
