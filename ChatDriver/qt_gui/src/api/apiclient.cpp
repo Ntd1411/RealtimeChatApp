@@ -262,15 +262,35 @@ void ApiClient::searchUsers(const QString &query)
 
 void ApiClient::getMessageUsers()
 {
-    QNetworkRequest request = createRequest("/api/message/users");
+    QNetworkRequest request = createRequest("/messages/users");
+    logToFile("[GET-MESSAGE-USERS] Fetching message users");
+    logToFile("[GET-MESSAGE-USERS] URL: " + base_url + "/messages/users");
+    
     messageUsersReply = manager->get(request);
+    
+    if (!messageUsersReply) {
+        logToFile("[GET-MESSAGE-USERS] ERROR: Failed to create network reply!");
+        emit error("Lỗi mạng");
+        return;
+    }
+    
     connect(messageUsersReply, SIGNAL(finished()), this, SLOT(onMessageUsersFinished()));
 }
 
 void ApiClient::getMessages(const QString &userId)
 {
-    QNetworkRequest request = createRequest("/api/message/" + userId);
+    QNetworkRequest request = createRequest("/messages/" + userId);
+    logToFile("[GET-MESSAGES] Fetching messages for user: " + userId);
+    logToFile("[GET-MESSAGES] URL: " + base_url + "/messages/" + userId);
+    
     messagesReply = manager->get(request);
+    
+    if (!messagesReply) {
+        logToFile("[GET-MESSAGES] ERROR: Failed to create network reply!");
+        emit error("Lỗi mạng");
+        return;
+    }
+    
     connect(messagesReply, SIGNAL(finished()), this, SLOT(onMessagesFinished()));
 }
 
@@ -756,40 +776,178 @@ void ApiClient::onSearchFinished()
 
 void ApiClient::onMessageUsersFinished()
 {
-    if (!messageUsersReply) return;
+    logToFile("[GET-MESSAGE-USERS-RESPONSE] Received response");
     
-    if (messageUsersReply->error() == QNetworkReply::NoError) {
-        QByteArray responseData = messageUsersReply->readAll();
-        QJsonDocument doc = QJsonDocument::fromJson(responseData);
-        
-        if (doc.isObject()) {
-            QJsonObject obj = doc.object();
-            if (obj.contains("data")) {
-                QJsonArray users = obj["data"].toArray();
-                emit messageUsersReceived(users);
-            }
-        }
+    if (!messageUsersReply) {
+        logToFile("[GET-MESSAGE-USERS-RESPONSE] ERROR: messageUsersReply is NULL!");
+        emit error("Không có phản hồi từ máy chủ");
+        return;
     }
+    
+    int httpStatus = messageUsersReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    logToFile("[GET-MESSAGE-USERS-RESPONSE] HTTP Status: " + QString::number(httpStatus));
+    
+    QByteArray responseData = messageUsersReply->readAll();
+    
+    if (messageUsersReply->error() != QNetworkReply::NoError) {
+        QString errorMsg = messageUsersReply->errorString();
+        logToFile("[GET-MESSAGE-USERS-RESPONSE] Network Error: " + errorMsg);
+        emit error("Lỗi mạng: " + errorMsg);
+        messageUsersReply->deleteLater();
+        messageUsersReply = 0;
+        return;
+    }
+    
+    // === Handle encoding ===
+    responseData = responseData.trimmed();
+    
+    // Remove UTF-8 BOM if present
+    if (responseData.size() >= 3 &&
+        (unsigned char)responseData[0] == 0xEF &&
+        (unsigned char)responseData[1] == 0xBB &&
+        (unsigned char)responseData[2] == 0xBF) {
+        logToFile("[GET-MESSAGE-USERS-RESPONSE] Removing UTF-8 BOM");
+        responseData = responseData.mid(3);
+    }
+    
+    if (responseData.isEmpty()) {
+        logToFile("[GET-MESSAGE-USERS-RESPONSE] ERROR: Response is EMPTY!");
+        emit error("Máy chủ trả về phản hồi trống");
+        messageUsersReply->deleteLater();
+        messageUsersReply = 0;
+        return;
+    }
+    
+    logToFile("[GET-MESSAGE-USERS-RESPONSE] Raw response: " + QString::fromLatin1(responseData.left(200)));
+    
+    // === Parse JSON ===
+    QJsonParseError jsonError;
+    QJsonDocument doc = QJsonDocument::fromJson(responseData, &jsonError);
+    
+    if (doc.isNull()) {
+        logToFile("[GET-MESSAGE-USERS-RESPONSE] ERROR: Cannot parse JSON: " + jsonError.errorString());
+        emit error("Phản hồi JSON không hợp lệ");
+        messageUsersReply->deleteLater();
+        messageUsersReply = 0;
+        return;
+    }
+    
+    if (!doc.isObject()) {
+        logToFile("[GET-MESSAGE-USERS-RESPONSE] ERROR: Response is not a JSON object!");
+        emit error("Phản hồi không hợp lệ");
+        messageUsersReply->deleteLater();
+        messageUsersReply = 0;
+        return;
+    }
+    
+    QJsonObject obj = doc.object();
+    logToFile("[GET-MESSAGE-USERS-RESPONSE] JSON keys: " + obj.keys().join(", "));
+    
+    // === Extract users array ===
+    if (httpStatus >= 400) {
+        QString errorMessage = "Lỗi lấy danh sách người dùng";
+        logToFile("[GET-MESSAGE-USERS-RESPONSE] Error: " + errorMessage);
+        emit error(errorMessage);
+    } else {
+        QJsonArray users;
+        if (obj.contains("users") && obj["users"].isArray()) {
+            users = obj["users"].toArray();
+            logToFile("[GET-MESSAGE-USERS-RESPONSE] Found " + QString::number(users.size()) + " users");
+        } else {
+            logToFile("[GET-MESSAGE-USERS-RESPONSE] WARNING: 'users' field not found");
+        }
+        emit messageUsersReceived(users);
+    }
+    
     messageUsersReply->deleteLater();
     messageUsersReply = 0;
 }
 
 void ApiClient::onMessagesFinished()
 {
-    if (!messagesReply) return;
+    logToFile("[GET-MESSAGES-RESPONSE] Received response");
     
-    if (messagesReply->error() == QNetworkReply::NoError) {
-        QByteArray responseData = messagesReply->readAll();
-        QJsonDocument doc = QJsonDocument::fromJson(responseData);
-        
-        if (doc.isObject()) {
-            QJsonObject obj = doc.object();
-            if (obj.contains("data")) {
-                QJsonArray messages = obj["data"].toArray();
-                emit messagesReceived(messages);
-            }
-        }
+    if (!messagesReply) {
+        logToFile("[GET-MESSAGES-RESPONSE] ERROR: messagesReply is NULL!");
+        emit error("Không có phản hồi từ máy chủ");
+        return;
     }
+    
+    int httpStatus = messagesReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    logToFile("[GET-MESSAGES-RESPONSE] HTTP Status: " + QString::number(httpStatus));
+    
+    QByteArray responseData = messagesReply->readAll();
+    
+    if (messagesReply->error() != QNetworkReply::NoError) {
+        QString errorMsg = messagesReply->errorString();
+        logToFile("[GET-MESSAGES-RESPONSE] Network Error: " + errorMsg);
+        emit error("Lỗi mạng: " + errorMsg);
+        messagesReply->deleteLater();
+        messagesReply = 0;
+        return;
+    }
+    
+    // === Handle encoding ===
+    responseData = responseData.trimmed();
+    
+    // Remove UTF-8 BOM if present
+    if (responseData.size() >= 3 &&
+        (unsigned char)responseData[0] == 0xEF &&
+        (unsigned char)responseData[1] == 0xBB &&
+        (unsigned char)responseData[2] == 0xBF) {
+        logToFile("[GET-MESSAGES-RESPONSE] Removing UTF-8 BOM");
+        responseData = responseData.mid(3);
+    }
+    
+    if (responseData.isEmpty()) {
+        logToFile("[GET-MESSAGES-RESPONSE] ERROR: Response is EMPTY!");
+        emit error("Máy chủ trả về phản hồi trống");
+        messagesReply->deleteLater();
+        messagesReply = 0;
+        return;
+    }
+    
+    logToFile("[GET-MESSAGES-RESPONSE] Raw response: " + QString::fromLatin1(responseData.left(200)));
+    
+    // === Parse JSON ===
+    QJsonParseError jsonError;
+    QJsonDocument doc = QJsonDocument::fromJson(responseData, &jsonError);
+    
+    if (doc.isNull()) {
+        logToFile("[GET-MESSAGES-RESPONSE] ERROR: Cannot parse JSON: " + jsonError.errorString());
+        emit error("Phản hồi JSON không hợp lệ");
+        messagesReply->deleteLater();
+        messagesReply = 0;
+        return;
+    }
+    
+    if (!doc.isObject()) {
+        logToFile("[GET-MESSAGES-RESPONSE] ERROR: Response is not a JSON object!");
+        emit error("Phản hồi không hợp lệ");
+        messagesReply->deleteLater();
+        messagesReply = 0;
+        return;
+    }
+    
+    QJsonObject obj = doc.object();
+    logToFile("[GET-MESSAGES-RESPONSE] JSON keys: " + obj.keys().join(", "));
+    
+    // === Extract messages array ===
+    if (httpStatus >= 400) {
+        QString errorMessage = "Lỗi lấy tin nhắn";
+        logToFile("[GET-MESSAGES-RESPONSE] Error: " + errorMessage);
+        emit error(errorMessage);
+    } else {
+        QJsonArray messages;
+        if (obj.contains("messages") && obj["messages"].isArray()) {
+            messages = obj["messages"].toArray();
+            logToFile("[GET-MESSAGES-RESPONSE] Found " + QString::number(messages.size()) + " messages");
+        } else {
+            logToFile("[GET-MESSAGES-RESPONSE] WARNING: 'messages' field not found");
+        }
+        emit messagesReceived(messages);
+    }
+    
     messagesReply->deleteLater();
     messagesReply = 0;
 }
