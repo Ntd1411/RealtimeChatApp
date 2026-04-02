@@ -907,14 +907,34 @@ void ApiClient::onMessagesFinished()
         return;
     }
     
-    logToFile("[GET-MESSAGES-RESPONSE] Raw response: " + QString::fromLatin1(responseData.left(200)));
+    // Try UTF-8 first, then fallback to Latin1
+    QString decodedStr = QString::fromUtf8(responseData.constData(), responseData.size());
+    bool hasReplacement = false;
+    for (int i = 0; i < decodedStr.length(); ++i) {
+        if (decodedStr.at(i).unicode() == 0xFFFD) { 
+            hasReplacement = true; 
+            break; 
+        }
+    }
+    
+    if (hasReplacement) {
+        logToFile("[GET-MESSAGES-RESPONSE] Detected invalid UTF-8, trying Latin1...");
+        decodedStr = QString::fromLatin1(responseData.constData(), responseData.size());
+    }
+    
+    logToFile("[GET-MESSAGES-RESPONSE] Decoded response length: " + QString::number(decodedStr.length()));
+    logToFile("[GET-MESSAGES-RESPONSE] Sample: " + decodedStr.left(200));
+    
+    // Convert back to UTF-8 bytes for JSON parsing
+    QByteArray cleanedData = decodedStr.toUtf8();
     
     // === Parse JSON ===
     QJsonParseError jsonError;
-    QJsonDocument doc = QJsonDocument::fromJson(responseData, &jsonError);
+    QJsonDocument doc = QJsonDocument::fromJson(cleanedData, &jsonError);
     
     if (doc.isNull()) {
         logToFile("[GET-MESSAGES-RESPONSE] ERROR: Cannot parse JSON: " + jsonError.errorString());
+        logToFile("[GET-MESSAGES-RESPONSE] Error offset: " + QString::number(jsonError.offset));
         emit error("Phản hồi JSON không hợp lệ");
         messagesReply->deleteLater();
         messagesReply = 0;
@@ -942,6 +962,12 @@ void ApiClient::onMessagesFinished()
         if (obj.contains("messages") && obj["messages"].isArray()) {
             messages = obj["messages"].toArray();
             logToFile("[GET-MESSAGES-RESPONSE] Found " + QString::number(messages.size()) + " messages");
+            
+            // Extract and log first message as debug
+            if (messages.size() > 0) {
+                QJsonObject firstMsg = messages[0].toObject();
+                logToFile("[GET-MESSAGES-RESPONSE] First message content: " + firstMsg["content"].toString().left(100));
+            }
         } else {
             logToFile("[GET-MESSAGES-RESPONSE] WARNING: 'messages' field not found");
         }
