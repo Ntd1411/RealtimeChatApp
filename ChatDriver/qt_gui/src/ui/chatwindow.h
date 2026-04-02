@@ -30,8 +30,6 @@ private slots:
     void onSearchUserClicked();
     void onUserSelected(QListWidgetItem *item);
     void onSearchTextChanged(const QString &text);
-    void onTypingTimerTimeout();
-    void onMessageInputTextChanged(const QString &text);
     
     // API Events
     void onSearchResults(const QJsonArray &users);
@@ -43,9 +41,6 @@ private slots:
     void onSocketConnected();
     void onSocketDisconnected();
     void onSocketMessageReceived(const QJsonObject &message);
-    void onSocketTypingStart(const QString &senderId, const QString &senderName);
-    void onSocketTypingStopped(const QString &senderId);
-    void onSocketOnlineStatusChanged(const QString &userId, bool isOnline);
 
 private:
     void setupUI();
@@ -83,9 +78,6 @@ private:
     QString username;
     QString current_chat_user_id;
     QString current_chat_username;
-    
-    QTimer *typingTimer;
-    bool isTyping;
 };
 
 #endif // CHATWINDOW_H

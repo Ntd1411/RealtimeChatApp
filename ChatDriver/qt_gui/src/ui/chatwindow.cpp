@@ -17,7 +17,7 @@
 #include <QMessageBox>
 
 ChatWindow::ChatWindow(const QString &t, const QString &uid, const QString &u)
-    : token(t), user_id(uid), username(u), current_chat_user_id(""), isTyping(false)
+    : token(t), user_id(uid), username(u), current_chat_user_id("")
 {
     setWindowTitle("Chat Application - " + username);
     setGeometry(100, 100, 1000, 600);
@@ -34,10 +34,6 @@ ChatWindow::ChatWindow(const QString &t, const QString &uid, const QString &u)
         QMessageBox::warning(this, "Warning", 
             "Crypto device not available. Messages won't be encrypted.");
     }
-    
-    // Typing timer
-    typingTimer = new QTimer(this);
-    connect(typingTimer, &QTimer::timeout, this, &ChatWindow::onTypingTimerTimeout);
     
     setupUI();
     setupConnections();
@@ -209,9 +205,6 @@ void ChatWindow::setupConnections()
     connect(socketClient, &SocketClient::connected, this, &ChatWindow::onSocketConnected);
     connect(socketClient, &SocketClient::disconnected, this, &ChatWindow::onSocketDisconnected);
     connect(socketClient, &SocketClient::messageReceived, this, &ChatWindow::onSocketMessageReceived);
-    connect(socketClient, &SocketClient::typingStarted, this, &ChatWindow::onSocketTypingStart);
-    connect(socketClient, &SocketClient::typingStopped, this, &ChatWindow::onSocketTypingStopped);
-    connect(socketClient, &SocketClient::onlineStatusChanged, this, &ChatWindow::onSocketOnlineStatusChanged);
 }
 
 void ChatWindow::onSendMessageClicked()
@@ -364,32 +357,11 @@ void ChatWindow::onSocketMessageReceived(const QJsonObject &message)
     // Only display if it's from current chat
     if (senderId == current_chat_user_id) {
         displayMessage(current_chat_username, content, false);
-        socketClient->markMessageSeen(senderId);
         statusLabel->setText("New message received");
     }
 }
 
-void ChatWindow::onSocketTypingStart(const QString &senderId, const QString &senderName)
-{
-    qDebug() << "[SOCKET-TYPING] Started by:" << senderName;
-    if (senderId == current_chat_user_id) {
-        typingLabel->setText(senderName + " is typing...");
-        typingLabel->setStyleSheet("font-size: 10px; color: #2196F3; font-style: italic;");
-    }
-}
 
-void ChatWindow::onSocketTypingStopped(const QString &senderId)
-{
-    qDebug() << "[SOCKET-TYPING] Stopped by:" << senderId;
-    if (senderId == current_chat_user_id) {
-        typingLabel->clear();
-    }
-}
-
-void ChatWindow::onSocketOnlineStatusChanged(const QString &userId, bool isOnline)
-{
-    // Update user status in list (not implemented yet)
-}
 
 void ChatWindow::displayMessage(const QString &sender, const QString &content, bool isOwn, const QString &timestamp)
 {
@@ -409,20 +381,7 @@ void ChatWindow::displayMessage(const QString &sender, const QString &content, b
     messageView->setTextBackgroundColor(Qt::white);
 }
 
-void ChatWindow::onTypingTimerTimeout()
-{
-    socketClient->notifyTypingStop(current_chat_user_id);
-    isTyping = false;
-}
 
-void ChatWindow::onMessageInputTextChanged(const QString &text)
-{
-    if (!text.isEmpty() && !isTyping && !current_chat_user_id.isEmpty()) {
-        socketClient->notifyTypingStart(current_chat_user_id);
-        isTyping = true;
-        typingTimer->start(3000); // Stop typing after 3 seconds of inactivity
-    }
-}
 
 void ChatWindow::closeEvent(QCloseEvent *event)
 {
