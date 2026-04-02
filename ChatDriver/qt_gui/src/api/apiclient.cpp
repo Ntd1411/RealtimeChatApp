@@ -674,6 +674,7 @@ void ApiClient::onSearchFinished()
         (unsigned char)responseData[0] == 0xEF &&
         (unsigned char)responseData[1] == 0xBB &&
         (unsigned char)responseData[2] == 0xBF) {
+        logToFile("[SEARCH-RESPONSE] Removing UTF-8 BOM");
         responseData = responseData.mid(3);
     }
     
@@ -685,25 +686,15 @@ void ApiClient::onSearchFinished()
         return;
     }
     
-    QString decodedStr = QString::fromUtf8(responseData.constData(), responseData.size());
-    bool hasReplacement = false;
-    for (int i = 0; i < decodedStr.length(); ++i) {
-        if (decodedStr.at(i).unicode() == 0xFFFD) { hasReplacement = true; break; }
-    }
-    if (hasReplacement) {
-        logToFile("[SEARCH-RESPONSE] Detected invalid UTF-8, trying fromLatin1...");
-        decodedStr = QString::fromLatin1(responseData.constData(), responseData.size());
-    }
+    logToFile("[SEARCH-RESPONSE] Response data size: " + QString::number(responseData.size()) + " bytes");
     
-    QByteArray normalizedData = decodedStr.toUtf8();
-    logToFile("[SEARCH-RESPONSE] Normalized response: " + decodedStr.left(500));
-    
-    // === Parse JSON ===
+    // === Parse JSON directly ===
     QJsonParseError jsonError;
-    QJsonDocument doc = QJsonDocument::fromJson(normalizedData, &jsonError);
+    QJsonDocument doc = QJsonDocument::fromJson(responseData, &jsonError);
     
     if (doc.isNull()) {
         logToFile("[SEARCH-RESPONSE] ERROR: Cannot parse JSON: " + jsonError.errorString());
+        logToFile("[SEARCH-RESPONSE] Tried parsing: " + QString::fromUtf8(responseData.left(200)));
         emit searchFailed("Phản hồi JSON không hợp lệ");
         searchReply->deleteLater();
         searchReply = 0;

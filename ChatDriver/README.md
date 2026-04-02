@@ -111,13 +111,17 @@ cd RealtimeChatApp/ChatDriver/qt_gui/build
 
 ### Quick start
 ```bash
-cd RealtimeChatApp/ChatDriver/kernel_module
+cd ~/RealtimeChatApp/ChatDriver/kernel_module
 make clean
 make
 make install
-cd ~
-cd RealtimeChatApp/ChatDriver/qt_gui/build
+cd ~/RealtimeChatApp/ChatDriver/qt_gui/build
 make clean
 make
 ./chatapp
+```
+Xem log
+```bash
+cd ~/RealtimeChatApp/ChatDriver/qt_gui/build
+cat chatclient.log
 ```
