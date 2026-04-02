@@ -164,7 +164,12 @@ void SocketClient::notifyTypingStop(const QString &receiverId)
 
 void SocketClient::onConnected()
 {
-    logToFile("Socket connected successfully");
+    logToFile("========================================");
+    logToFile("[CONNECTED] Socket connected successfully");
+    logToFile("WebSocket state: " + QString::number(webSocket->isValid()));
+    logToFile("[CONNECTED] Waiting for incoming messages from server...");
+    logToFile("========================================");
+    
     if (reconnectTimer) {
         reconnectTimer->stop();
     }
@@ -173,26 +178,37 @@ void SocketClient::onConnected()
 
 void SocketClient::onDisconnected()
 {
-    logToFile("Socket disconnected");
+    logToFile("========================================");
+    logToFile("[DISCONNECTED] Socket disconnected from server");
+    logToFile("WebSocket state: " + QString::number(webSocket->isValid()));
+    logToFile("========================================");
     emit disconnected();
     
     // Auto-reconnect after 5 seconds
     if (shouldReconnect && reconnectTimer) {
-        logToFile("Scheduling reconnect in 5 seconds...");
+        logToFile("[RECONNECT] Scheduling reconnect in 5 seconds...");
         reconnectTimer->start(5000);
     }
 }
 
 void SocketClient::onTextMessageReceived(const QString &message)
 {
-    logToFile("Received message: " + message.left(200));
+    logToFile("========================================");
+    logToFile("[TEXT-MESSAGE-RECEIVED] Message arrived");
+    logToFile("[TEXT-MESSAGE-RECEIVED] Length: " + QString::number(message.length()));
+    logToFile("[TEXT-MESSAGE-RECEIVED] Content: " + message.left(500));
+    logToFile("========================================");
     parseSocketMessage(message);
 }
 
 void SocketClient::onError(QAbstractSocket::SocketError error)
 {
     QString errorMsg = webSocket->errorString();
-    logToFile("Socket error: " + errorMsg);
+    logToFile("========================================");
+    logToFile("[SOCKET-ERROR] Error code: " + QString::number(error));
+    logToFile("[SOCKET-ERROR] Error message: " + errorMsg);
+    logToFile("[SOCKET-ERROR] WebSocket state: " + QString::number(webSocket->state()));
+    logToFile("========================================");
     emit this->error(errorMsg);
 }
 
