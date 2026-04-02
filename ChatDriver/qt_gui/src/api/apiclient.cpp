@@ -655,7 +655,6 @@ void ApiClient::onSearchFinished()
     logToFile("[SEARCH-RESPONSE] HTTP Status: " + QString::number(httpStatus));
     
     QByteArray responseData = searchReply->readAll();
-    logToFile("[SEARCH-RESPONSE] Raw response: " + QString::fromUtf8(responseData));
     
     if (searchReply->error() != QNetworkReply::NoError) {
         QString errorMsg = searchReply->errorString();
@@ -686,15 +685,39 @@ void ApiClient::onSearchFinished()
         return;
     }
     
-    logToFile("[SEARCH-RESPONSE] Response data size: " + QString::number(responseData.size()) + " bytes");
+    logToFile("[SEARCH-RESPONSE] Raw response: " + QString::fromLatin1(responseData));
     
-    // === Parse JSON directly ===
+    // === Remove message field to avoid UTF-8 encoding issues ===
+    QString responseStr = QString::fromLatin1(responseData.constData(), responseData.size());
+    
+    int msgIdx = responseStr.indexOf("\"message\"");
+    if (msgIdx != -1) {
+        int colonIdx = responseStr.indexOf(':', msgIdx);
+        int commaIdx = responseStr.indexOf(',', msgIdx);
+        int braceIdx = responseStr.indexOf('}', msgIdx);
+        
+        if (colonIdx != -1) {
+            int endIdx = commaIdx;
+            if (commaIdx == -1 || (braceIdx != -1 && braceIdx < commaIdx)) {
+                endIdx = braceIdx;
+            }
+            if (endIdx > colonIdx) {
+                responseStr.remove(msgIdx, endIdx - msgIdx + 1);
+                responseStr = responseStr.replace(",}", "}").replace(",,", ",");
+                logToFile("[SEARCH-RESPONSE] Removed message field");
+            }
+        }
+    }
+    
+    QByteArray cleanedData = responseStr.toUtf8();
+    logToFile("[SEARCH-RESPONSE] Cleaned response: " + responseStr.left(200));
+    
+    // === Parse JSON ===
     QJsonParseError jsonError;
-    QJsonDocument doc = QJsonDocument::fromJson(responseData, &jsonError);
+    QJsonDocument doc = QJsonDocument::fromJson(cleanedData, &jsonError);
     
     if (doc.isNull()) {
         logToFile("[SEARCH-RESPONSE] ERROR: Cannot parse JSON: " + jsonError.errorString());
-        logToFile("[SEARCH-RESPONSE] Tried parsing: " + QString::fromUtf8(responseData.left(200)));
         emit searchFailed("Phản hồi JSON không hợp lệ");
         searchReply->deleteLater();
         searchReply = 0;
@@ -715,10 +738,6 @@ void ApiClient::onSearchFinished()
     // === Extract users array ===
     if (httpStatus >= 400) {
         QString errorMessage = "Tìm kiếm thất bại";
-        if (obj.contains("message")) {
-            errorMessage = obj["message"].toString();
-        }
-        logToFile("[SEARCH-RESPONSE] Search failed: " + errorMessage);
         emit searchFailed(errorMessage);
     } else {
         QJsonArray users;
@@ -726,7 +745,7 @@ void ApiClient::onSearchFinished()
             users = obj["users"].toArray();
             logToFile("[SEARCH-RESPONSE] Found " + QString::number(users.size()) + " users");
         } else {
-            logToFile("[SEARCH-RESPONSE] WARNING: 'users' field not found in response");
+            logToFile("[SEARCH-RESPONSE] WARNING: 'users' field not found");
         }
         emit searchResults(users);
     }
