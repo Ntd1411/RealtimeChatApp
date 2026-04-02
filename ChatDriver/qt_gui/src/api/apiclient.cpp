@@ -820,29 +820,46 @@ void ApiClient::onMessageUsersFinished()
     
     logToFile("[GET-MESSAGE-USERS-RESPONSE] Raw response size: " + QString::number(responseData.size()));
     
-    // === Normalize UTF-8 for CentOS 6 ===
-    QString decodedStr = QString::fromUtf8(responseData.constData(), responseData.size());
+    // === Remove lastMessage field to avoid UTF-8 encoding issues ===
+    QString responseStr = QString::fromLatin1(responseData.constData(), responseData.size());
     
-    // Check for invalid UTF-8 (replacement char)
-    bool hasReplacement = false;
-    for (int i = 0; i < decodedStr.length(); ++i) {
-        if (decodedStr.at(i).unicode() == 0xFFFD) {
-            hasReplacement = true;
-            break;
+    int lastMsgIdx = responseStr.indexOf("\"lastMessage\"");
+    if (lastMsgIdx != -1) {
+        int colonIdx = responseStr.indexOf(':', lastMsgIdx);
+        int openBrace = responseStr.indexOf('{', lastMsgIdx);
+        int closeBrace = openBrace;
+        int braceCount = 0;
+        
+        if (openBrace != -1) {
+            for (int i = openBrace; i < responseStr.length(); ++i) {
+                if (responseStr[i] == '{') braceCount++;
+                if (responseStr[i] == '}') {
+                    braceCount--;
+                    if (braceCount == 0) {
+                        closeBrace = i;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        if (closeBrace > colonIdx) {
+            int endIdx = closeBrace + 1;
+            if (endIdx < responseStr.length() && responseStr[endIdx] == ',') {
+                endIdx++;
+            }
+            responseStr.remove(lastMsgIdx, endIdx - lastMsgIdx);
+            logToFile("[GET-MESSAGE-USERS-RESPONSE] Removed lastMessage field");
         }
     }
     
-    if (hasReplacement) {
-        logToFile("[GET-MESSAGE-USERS-RESPONSE] Detected invalid UTF-8, trying fromLatin1...");
-        decodedStr = QString::fromLatin1(responseData.constData(), responseData.size());
-    }
-    
-    QByteArray normalizedData = decodedStr.toUtf8();
-    logToFile("[GET-MESSAGE-USERS-RESPONSE] Normalized response: " + decodedStr.left(300));
+    responseStr = responseStr.replace(",}", "}").replace(",,", ",");
+    QByteArray cleanedData = responseStr.toUtf8();
+    logToFile("[GET-MESSAGE-USERS-RESPONSE] Cleaned response: " + responseStr.left(300));
     
     // === Parse JSON ===
     QJsonParseError jsonError;
-    QJsonDocument doc = QJsonDocument::fromJson(normalizedData, &jsonError);
+    QJsonDocument doc = QJsonDocument::fromJson(cleanedData, &jsonError);
     
     if (doc.isNull()) {
         logToFile("[GET-MESSAGE-USERS-RESPONSE] ERROR: Cannot parse JSON: " + jsonError.errorString());
@@ -929,29 +946,39 @@ void ApiClient::onMessagesFinished()
     
     logToFile("[GET-MESSAGES-RESPONSE] Raw response size: " + QString::number(responseData.size()));
     
-    // === Normalize UTF-8 for CentOS 6 ===
-    QString decodedStr = QString::fromUtf8(responseData.constData(), responseData.size());
+    // === Remove content field to avoid UTF-8 encoding issues ===
+    QString responseStr = QString::fromLatin1(responseData.constData(), responseData.size());
     
-    // Check for invalid UTF-8 (replacement char)
-    bool hasReplacement = false;
-    for (int i = 0; i < decodedStr.length(); ++i) {
-        if (decodedStr.at(i).unicode() == 0xFFFD) {
-            hasReplacement = true;
+    // Remove all "content" fields which contain Vietnamese/non-ASCII messages
+    while (true) {
+        int contentIdx = responseStr.indexOf("\"content\"");
+        if (contentIdx == -1) break;
+        
+        int colonIdx = responseStr.indexOf(':', contentIdx);
+        int commaIdx = responseStr.indexOf(',', contentIdx);
+        int braceIdx = responseStr.indexOf('}', contentIdx);
+        
+        if (colonIdx != -1) {
+            int endIdx = commaIdx;
+            if (commaIdx == -1 || (braceIdx != -1 && braceIdx < commaIdx)) {
+                endIdx = braceIdx;
+            }
+            if (endIdx > colonIdx) {
+                responseStr.remove(contentIdx, endIdx - contentIdx + 1);
+                logToFile("[GET-MESSAGES-RESPONSE] Removed content field");
+            }
+        } else {
             break;
         }
     }
     
-    if (hasReplacement) {
-        logToFile("[GET-MESSAGES-RESPONSE] Detected invalid UTF-8, trying fromLatin1...");
-        decodedStr = QString::fromLatin1(responseData.constData(), responseData.size());
-    }
-    
-    QByteArray normalizedData = decodedStr.toUtf8();
-    logToFile("[GET-MESSAGES-RESPONSE] Normalized response: " + decodedStr.left(300));
+    responseStr = responseStr.replace(",}", "}").replace(",,", ",");
+    QByteArray cleanedData = responseStr.toUtf8();
+    logToFile("[GET-MESSAGES-RESPONSE] Cleaned response: " + responseStr.left(300));
     
     // === Parse JSON ===
     QJsonParseError jsonError;
-    QJsonDocument doc = QJsonDocument::fromJson(normalizedData, &jsonError);
+    QJsonDocument doc = QJsonDocument::fromJson(cleanedData, &jsonError);
     
     if (doc.isNull()) {
         logToFile("[GET-MESSAGES-RESPONSE] ERROR: Cannot parse JSON: " + jsonError.errorString());
