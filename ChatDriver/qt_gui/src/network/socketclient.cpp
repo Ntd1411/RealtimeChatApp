@@ -178,18 +178,25 @@ void SocketClient::onConnected()
 
 void SocketClient::sendAuthMessage()
 {
-    // Build Socket.IO auth frame: "0{\"token\":\"jwt...\"}"
+    // Build Socket.IO CONNECT packet with auth
+    // Socket.IO packet format: 0 (CONNECT) + namespace + JSON auth
     QJsonObject authObj;
     authObj["token"] = token;
     
     QJsonDocument doc(authObj);
-    QString authFrame = "0" + doc.toJson(QJsonDocument::Compact);
+    QString authPacket = "0" + doc.toJson(QJsonDocument::Compact);
     
-    logToFile("[AUTH-FRAME] Sending auth: " + authFrame.left(100));
+    // Wrap in Engine.IO message frame (type 4)
+    // Engine.IO protocol: 4 = message frame
+    QString engineioFrame = "4" + authPacket;
+    
+    logToFile("[AUTH-FRAME] Socket.IO packet: " + authPacket.left(100));
+    logToFile("[AUTH-FRAME] Engine.IO frame: " + engineioFrame.left(100));
+    logToFile("[AUTH-FRAME] Sending auth message...");
     
     if (webSocket && webSocket->isValid()) {
-        webSocket->sendTextMessage(authFrame);
-        logToFile("[AUTH-FRAME] Auth frame sent");
+        webSocket->sendTextMessage(engineioFrame);
+        logToFile("[AUTH-FRAME] Auth frame sent successfully");
     } else {
         logToFile("[AUTH-FRAME] ERROR: WebSocket not valid");
         emit error("Socket không sẵn sàng");
@@ -216,7 +223,15 @@ void SocketClient::onTextMessageReceived(const QString &message)
     logToFile("========================================");
     logToFile("[TEXT-MESSAGE-RECEIVED] Message arrived");
     logToFile("[TEXT-MESSAGE-RECEIVED] Length: " + QString::number(message.length()));
-    logToFile("[TEXT-MESSAGE-RECEIVED] Content: " + message.left(500));
+    logToFile("[TEXT-MESSAGE-RECEIVED] Full content: " + message);
+    logToFile("[TEXT-MESSAGE-RECEIVED] First 10 chars hex:");
+    
+    // Log hex values of first 10 chars
+    for (int i = 0; i < qMin(10, message.length()); i++) {
+        logToFile("  [" + QString::number(i) + "] = " + 
+                 QString::number((int)message[i].toLatin1()) + 
+                 " (" + message[i] + ")");
+    }
     logToFile("========================================");
     parseSocketMessage(message);
 }
@@ -228,6 +243,7 @@ void SocketClient::onError(QAbstractSocket::SocketError error)
     logToFile("[SOCKET-ERROR] Error code: " + QString::number(error));
     logToFile("[SOCKET-ERROR] Error message: " + errorMsg);
     logToFile("[SOCKET-ERROR] WebSocket state: " + QString::number(webSocket->state()));
+    logToFile("[SOCKET-ERROR] Authenticated: " + QString(authenticated ? "YES" : "NO"));
     logToFile("========================================");
     emit this->error(errorMsg);
 }
@@ -258,118 +274,139 @@ void SocketClient::parseSocketMessage(const QString &message)
     
     switch (frameType) {
         case '0': {
-            logToFile("[FRAME-0] Connect response: " + message);
-            
-            // Parse connect response - if it has JSON, check for errors
-            if (message.length() > 1) {
-                QString jsonStr = message.mid(1);
-                QJsonParseError jsonError;
-                QJsonDocument doc = QJsonDocument::fromJson(jsonStr.toUtf8(), &jsonError);
-                
-                if (doc.isObject()) {
-                    QJsonObject obj = doc.object();
-                    if (obj.contains("message")) {
-                        // Error in auth
-                        QString errorMsg = obj["message"].toString();
-                        logToFile("[FRAME-0] AUTH FAILED: " + errorMsg);
-                        emit error("Lỗi xác thực: " + errorMsg);
-                        if (webSocket && webSocket->isValid()) {
-                            webSocket->close();
-                        }
-                        return;
-                    }
-                }
-            }
-            
-            // Auth successful
-            logToFile("[FRAME-0] AUTH SUCCESSFUL - Socket.IO connection established");
-            authenticated = true;
-            if (reconnectTimer) {
-                reconnectTimer->stop();
-            }
-            emit connected();
+            logToFile("[ENGINE-IO-OPEN] Server sent OPEN frame: " + message.left(100));
+            // This is the Engine.IO OPEN packet, just log it and continue
             break;
         }
         case '1': {
-            logToFile("[FRAME-1] Engine.IO Connect: " + message.mid(1, 50));
+            logToFile("[ENGINE-IO-CLOSE] Server sent CLOSE frame");
             break;
         }
         case '2': {
-            logToFile("[FRAME-2] Ping");
+            logToFile("[ENGINE-IO-PING] Received ping, sending pong");
             // Respond with pong (3)
             if (webSocket && webSocket->isValid()) {
                 webSocket->sendTextMessage("3");
-                logToFile("Sent pong response");
             }
             break;
         }
         case '3': {
-            logToFile("[FRAME-3] Pong");
+            logToFile("[ENGINE-IO-PONG] Received pong");
             break;
         }
         case '4': {
-            logToFile("[FRAME-4] Emit message (Socket.IO event)");
+            logToFile("[ENGINE-IO-MESSAGE] Received Engine.IO message frame");
             
-            if (!authenticated) {
-                logToFile("[FRAME-4] WARNING: Not authenticated yet, ignoring event");
+            // Engine.IO frame 4 contains Socket.IO packet
+            // Extract Socket.IO packet (everything after the '4')
+            if (message.length() < 2) {
+                logToFile("[ENGINE-IO-MESSAGE] Message too short");
                 break;
             }
             
-            // Emit message - parse JSON after "4"
-            QString jsonStr = message.mid(1);
-            logToFile("JSON to parse: " + jsonStr.left(200));
+            QString socketioPacket = message.mid(1);
+            char socketioType = socketioPacket[0].toLatin1();
             
-            QJsonParseError jsonError;
-            QJsonDocument doc = QJsonDocument::fromJson(jsonStr.toUtf8(), &jsonError);
+            logToFile("[SOCKETIO-PACKET] Type: " + QString::number(socketioType) + 
+                     " Content: " + socketioPacket.left(200));
             
-            if (doc.isNull()) {
-                logToFile("ERROR: JSON parse failed: " + jsonError.errorString());
-                break;
-            }
-            
-            if (!doc.isArray()) {
-                logToFile("ERROR: JSON is not array");
-                break;
-            }
-            
-            QJsonArray arr = doc.array();
-            if (arr.size() < 2) {
-                logToFile("WARNING: Array size < 2: " + QString::number(arr.size()));
-                break;
-            }
-            
-            QString eventName = arr[0].toString();
-            QJsonObject data = arr[1].toObject();
-            
-            logToFile("Event: " + eventName);
-            
-            if (eventName == "receive-message") {
-                QString senderId = data["senderId"].toString();
-                QString content = data["content"].toString();
-                logToFile("Message from " + senderId + ": " + content.left(100));
-                emit messageReceived(data);
-            } else if (eventName == "seen-message") {
-                QString viewerId = data["viewerId"].toString();
-                logToFile("Message seen by " + viewerId);
-                emit messagesSeen(viewerId);
-            } else if (eventName == "typing-start") {
-                QString senderId = data["senderId"].toString();
-                logToFile("Typing started by " + senderId);
-                emit typingStarted(senderId, data["senderName"].toString());
-            } else if (eventName == "typing-stop") {
-                QString senderId = data["senderId"].toString();
-                logToFile("Typing stopped by " + senderId);
-                emit typingStopped(senderId);
-            } else if (eventName == "noti-online") {
-                QString userId = data["id"].toString();
-                logToFile("User online: " + userId);
-                emit onlineStatusChanged(userId, true);
-            } else if (eventName == "noti-offline") {
-                QString userId = data["id"].toString();
-                logToFile("User offline: " + userId);
-                emit onlineStatusChanged(userId, false);
-            } else {
-                logToFile("Unknown event: " + eventName);
+            switch (socketioType) {
+                case '0': {
+                    // Socket.IO CONNECT response
+                    logToFile("[SOCKETIO-CONNECT] Server connect response received");
+                    
+                    // Check if there's JSON data (error response)
+                    if (socketioPacket.length() > 1 && socketioPacket[1] == '{') {
+                        QString jsonStr = socketioPacket.mid(1);
+                        QJsonParseError jsonError;
+                        QJsonDocument doc = QJsonDocument::fromJson(jsonStr.toUtf8(), &jsonError);
+                        
+                        if (doc.isObject()) {
+                            QJsonObject obj = doc.object();
+                            if (obj.contains("message")) {
+                                // Auth error
+                                QString errorMsg = obj["message"].toString();
+                                logToFile("[SOCKETIO-CONNECT] AUTH FAILED: " + errorMsg);
+                                emit error("Lỗi xác thực: " + errorMsg);
+                                if (webSocket && webSocket->isValid()) {
+                                    webSocket->close();
+                                }
+                            } else {
+                                logToFile("[SOCKETIO-CONNECT] AUTH SUCCESSFUL");
+                                authenticated = true;
+                                if (reconnectTimer) {
+                                    reconnectTimer->stop();
+                                }
+                                emit connected();
+                            }
+                        } else {
+                            logToFile("[SOCKETIO-CONNECT] JSON parse error: " + jsonError.errorString());
+                        }
+                    } else {
+                        // No JSON data = successful connect
+                        logToFile("[SOCKETIO-CONNECT] AUTH SUCCESSFUL (no data)");
+                        authenticated = true;
+                        if (reconnectTimer) {
+                            reconnectTimer->stop();
+                        }
+                        emit connected();
+                    }
+                    break;
+                }
+                case '2': {
+                    // Socket.IO EVENT - app message
+                    logToFile("[SOCKETIO-EVENT] Received socket event");
+                    
+                    if (socketioPacket.length() > 1) {
+                        QString jsonStr = socketioPacket.mid(1);
+                        QJsonParseError jsonError;
+                        QJsonDocument doc = QJsonDocument::fromJson(jsonStr.toUtf8(), &jsonError);
+                        
+                        if (doc.isArray()) {
+                            QJsonArray arr = doc.array();
+                            if (arr.size() >= 2) {
+                                QString eventName = arr[0].toString();
+                                QJsonObject data = arr[1].toObject();
+                                
+                                logToFile("[SOCKETIO-EVENT] Event: " + eventName);
+                                
+                                if (eventName == "receive-message") {
+                                    logToFile("[SOCKETIO-EVENT] Received message event");
+                                    emit messageReceived(data);
+                                } else if (eventName == "seen-message") {
+                                    emit messagesSeen(data["viewerId"].toString());
+                                } else if (eventName == "typing-start") {
+                                    emit typingStarted(data["senderId"].toString(), data["senderName"].toString());
+                                } else if (eventName == "typing-stop") {
+                                    emit typingStopped(data["senderId"].toString());
+                                } else if (eventName == "noti-online") {
+                                    emit onlineStatusChanged(data["id"].toString(), true);
+                                } else if (eventName == "noti-offline") {
+                                    emit onlineStatusChanged(data["id"].toString(), false);
+                                } else {
+                                    logToFile("[SOCKETIO-EVENT] Unknown event: " + eventName);
+                                }
+                            }
+                        } else {
+                            logToFile("[SOCKETIO-EVENT] JSON not array");
+                        }
+                    }
+                    break;
+                }
+                case '4': {
+                    // Socket.IO ERROR
+                    logToFile("[SOCKETIO-ERROR] Error packet received: " + socketioPacket);
+                    if (socketioPacket.length() > 1) {
+                        QString errorData = socketioPacket.mid(1);
+                        logToFile("[SOCKETIO-ERROR] Error data: " + errorData);
+                        emit error("Socket error: " + errorData);
+                    }
+                    break;
+                }
+                default: {
+                    logToFile("[SOCKETIO-UNKNOWN] Type: " + QString::number(socketioType) + 
+                             " Content: " + socketioPacket.left(100));
+                }
             }
             break;
         }
