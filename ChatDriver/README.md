@@ -1,35 +1,61 @@
-### Software Requirements
+### Software Requirements (Ubuntu 24)
 
 ```bash
-sudo yum install -y epel-release
+# Update package manager
+sudo apt update && sudo apt upgrade -y
+
 # Qt5 development files
-sudo yum install -y \
-    qt5-qtbase-devel \
-    qt5-qtwebsockets-devel \
-    qt5-qttools-devel
+sudo apt install -y \
+    qt5-qmake \
+    qt5-qmake-bin \
+    libqt5core5a \
+    libqt5gui5 \
+    libqt5widgets5 \
+    libqt5network5 \
+    libqt5concurrent5 \
+    libqt5websockets5
+
+# Qt5 development headers
+sudo apt install -y \
+    qtbase5-dev \
+    qt5-qmake \
+    qttools5-dev-tools \
+    libqt5websockets5-dev
 
 # Build tools and compilers
-sudo yum groupinstall -y "Development Tools"
+sudo apt install -y \
+    build-essential \
+    gcc \
+    g++ \
+    make
 
-# Additional build utilities
-sudo yum install -y \
-    cmake3 \
-    kernel-devel-$(uname -r) \
-    kernel-headers-$(uname -r)
+# CMake (3.16+ compatible with Ubuntu 24)
+sudo apt install -y cmake
+
+# Kernel development files (required for kernel module)
+sudo apt install -y \
+    linux-headers-$(uname -r) \
+    linux-headers-generic
+
+# Git (for cloning if needed)
+sudo apt install -y git
 ```
 
-### Verification
+### Verification (Ubuntu 24)
 
 ```bash
 # Check Qt5 installation
 pkg-config --modversion Qt5Core
 
 # Check cmake
-cmake3 --version
+cmake --version
 
 # Check gcc/g++
-gcc --version
-g++ --version
+gcc --version && g++ --version
+
+# Check kernel headers
+uname -r
+ls /lib/modules/$(uname -r)/build
 ```
 
 ---

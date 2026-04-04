@@ -1,9 +1,9 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.16)
 project(ChatApp)
 
-# Use C++-98 compatible approach with compiler flags
-set(CMAKE_CXX_STANDARD 98)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++0x -Wno-c++0x-compat")
+# Use modern C++ standard (C++11 minimum for Ubuntu 24)
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)

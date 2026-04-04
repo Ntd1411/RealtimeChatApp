@@ -2,6 +2,10 @@
 # Build: driver + test app
 # Install: insmod
 # Clean: remove artifacts
+# 
+# WARNING: This kernel module uses deprecated crypto API (crypto_hash_desc, crypto_blkcipher)
+# Ubuntu 24 kernel 6.x+ may not support these APIs.
+# For production chat app, recommend using userspace TLS (OpenSSL) instead.
 
 KVERSION := $(shell uname -r)
 KBUILD_DIR := /lib/modules/$(KVERSION)/build
@@ -14,7 +18,7 @@ all: chat_crypto.ko chat_crypto_test
 	@echo "[✓] All targets built successfully"
 
 chat_crypto.ko:
-	@echo "Building kernel module..."
+	@echo "Building kernel module for kernel version: $(KVERSION)..."
 	make -C $(KBUILD_DIR) M=$(PWD) modules
 
 chat_crypto_test: chat_crypto_test.c

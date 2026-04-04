@@ -175,7 +175,8 @@ void SocketClient::onAuthTimeoutTimerTimeout()
 
 void SocketClient::onDisconnected()
 {
-    logToFile("[DISCONNECT] Closed code: " + QString::number(webSocket->closeCode()));
+    logToFile(QString("[DISCONNECT] Code: %1 | Reason: %2").arg(webSocket->closeCode()).arg(webSocket->closeReason()));
+    logToFile(QString("[DISCONNECT] Auth: %1, EngineIO: %2").arg(authenticated ? "YES" : "NO").arg(engineioReady ? "YES" : "NO"));
     
     engineioReady = false;
     authenticated = false;
@@ -187,7 +188,7 @@ void SocketClient::onDisconnected()
     emit disconnected();
     
     if (shouldReconnect && reconnectTimer) {
-        logToFile("[RECONNECT] Reconnecting in 5 seconds...");
+        logToFile("[DISCONNECT] Scheduling reconnect in 5 seconds...");
         reconnectTimer->start(5000);
     }
 }
@@ -197,7 +198,7 @@ void SocketClient::onTextMessageReceived(const QString &message)
     if (message.isEmpty()) {
         return;
     }
-    logToFile("[TEXT-MESSAGE] Received " + QString::number(message.length()) + " bytes");
+    logToFile(QString("[TEXT-RCV] %1 bytes: %2").arg(message.length()).arg(message.left(50)));
     parseSocketMessage(message);
 }
 
@@ -274,6 +275,8 @@ void SocketClient::parseSocketMessage(const QString &message)
             QString socketioPacket = message.mid(1);
             char socketioType = socketioPacket[0].toLatin1();
             
+            logToFile(QString("[SOCKETIO-TYPE] %1").arg(socketioType));
+            
             switch (socketioType) {
                 case '0': {
                     // Socket.IO CONNECT response
@@ -291,22 +294,30 @@ void SocketClient::parseSocketMessage(const QString &message)
                 }
                 case '2': {
                     // Socket.IO EVENT
+                    logToFile("[EVENT] Processing Socket.IO event");
                     if (socketioPacket.length() > 1) {
                         QString jsonStr = socketioPacket.mid(1);
+                        logToFile("[EVENT] JSON: " + jsonStr.left(200));
+                        
                         QJsonDocument doc = QJsonDocument::fromJson(jsonStr.toUtf8());
                         
                         if (doc.isArray()) {
                             QJsonArray arr = doc.array();
+                            logToFile(QString("[EVENT] Array size: %1").arg(arr.size()));
+                            
                             if (arr.size() >= 1) {
                                 QString eventName = arr[0].toString();
                                 logToFile("[EVENT] Event name: " + eventName);
                                 
                                 if (eventName == "receive-message" && arr.size() >= 2) {
                                     QJsonObject data = arr[1].toObject();
-                                    logToFile("[EVENT] Message received - content: " + data["content"].toString());
+                                    logToFile("[EVENT] Message content: " + data["content"].toString());
                                     emit messageReceived(data);
+                                    logToFile("[EVENT] messageReceived signal emitted");
                                 }
                             }
+                        } else {
+                            logToFile("[EVENT-ERR] JSON not array");
                         }
                     }
                     break;
